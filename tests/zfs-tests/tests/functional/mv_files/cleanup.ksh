@@ -26,7 +26,7 @@
 #
 
 #
-# Copyright (c) 2013 by Delphix. All rights reserved.
+# Copyright (c) 2013, 2016 by Delphix. All rights reserved.
 #
 
 . $STF_SUITE/include/libtest.shlib
@@ -34,15 +34,15 @@
 
 verify_runnable "global"
 
-[[ -f /var/tmp/exitsZero.ksh ]] && \
-	log_must $RM -f /var/tmp/exitsZero.ksh
-[[ -f /var/tmp/testbackgprocs.ksh ]] && \
-	log_must $RM -f /var/tmp/testbackgprocs.ksh
+[[ -f $TEST_BASE_DIR/exitsZero.ksh ]] && \
+	log_must rm -f $TEST_BASE_DIR/exitsZero.ksh
+[[ -f $TEST_BASE_DIR/testbackgprocs.ksh ]] && \
+	log_must rm -f $TEST_BASE_DIR/testbackgprocs.ksh
 
 ismounted $TESTPOOL/$TESTFS_TGT
-(( $? == 0 )) && log_must $ZFS umount $TESTPOOL/$TESTFS_TGT
-log_must $ZFS destroy $TESTPOOL/$TESTFS_TGT
+(( $? == 0 )) && log_must zfs umount $TESTPOOL/$TESTFS_TGT
+log_must zfs destroy $TESTPOOL/$TESTFS_TGT
 
-[[ -d $TESTDIR_TGT ]] && log_must $RM -rf $TESTDIR_TGT
+[[ -d $TESTDIR_TGT ]] && log_must rm -rf $TESTDIR_TGT
 
 default_cleanup

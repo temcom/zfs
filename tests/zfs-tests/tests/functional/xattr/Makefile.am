@@ -1,6 +1,5 @@
 pkgdatadir = $(datadir)/@PACKAGE@/zfs-tests/tests/functional/xattr
 dist_pkgdata_SCRIPTS = \
-	xattr_common.kshlib \
 	setup.ksh \
 	cleanup.ksh \
 	xattr_001_pos.ksh \
@@ -15,4 +14,8 @@ dist_pkgdata_SCRIPTS = \
 	xattr_010_neg.ksh \
 	xattr_011_pos.ksh \
 	xattr_012_pos.ksh \
-	xattr_013_pos.ksh 
+	xattr_013_pos.ksh
+
+dist_pkgdata_DATA = \
+	xattr_common.kshlib \
+	xattr.cfg

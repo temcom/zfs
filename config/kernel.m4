@@ -3,17 +3,49 @@ dnl # Default ZFS kernel configuration
 dnl #
 AC_DEFUN([ZFS_AC_CONFIG_KERNEL], [
 	ZFS_AC_KERNEL
-	ZFS_AC_SPL
+	ZFS_AC_QAT
 	ZFS_AC_TEST_MODULE
+	ZFS_AC_KERNEL_MISC_MINOR
+	ZFS_AC_KERNEL_OBJTOOL
 	ZFS_AC_KERNEL_CONFIG
+	ZFS_AC_KERNEL_CTL_NAME
+	ZFS_AC_KERNEL_PDE_DATA
+	ZFS_AC_KERNEL_SET_FS_PWD_WITH_CONST
+	ZFS_AC_KERNEL_2ARGS_VFS_FSYNC
+	ZFS_AC_KERNEL_FS_STRUCT_SPINLOCK
+	ZFS_AC_KERNEL_KUIDGID_T
+	ZFS_AC_KERNEL_FALLOCATE
+	ZFS_AC_KERNEL_2ARGS_ZLIB_DEFLATE_WORKSPACESIZE
+	ZFS_AC_KERNEL_RWSEM_SPINLOCK_IS_RAW
+	ZFS_AC_KERNEL_RWSEM_ACTIVITY
+	ZFS_AC_KERNEL_RWSEM_ATOMIC_LONG_COUNT
+	ZFS_AC_KERNEL_SCHED_RT_HEADER
+	ZFS_AC_KERNEL_SCHED_SIGNAL_HEADER
+	ZFS_AC_KERNEL_IO_SCHEDULE_TIMEOUT
+	ZFS_AC_KERNEL_4ARGS_VFS_GETATTR
+	ZFS_AC_KERNEL_3ARGS_VFS_GETATTR
+	ZFS_AC_KERNEL_2ARGS_VFS_GETATTR
+	ZFS_AC_KERNEL_USLEEP_RANGE
+	ZFS_AC_KERNEL_KMEM_CACHE_ALLOCFLAGS
+	ZFS_AC_KERNEL_KMEM_CACHE_CREATE_USERCOPY
+	ZFS_AC_KERNEL_WAIT_ON_BIT
+	ZFS_AC_KERNEL_WAIT_QUEUE_ENTRY_T
+	ZFS_AC_KERNEL_WAIT_QUEUE_HEAD_ENTRY
+	ZFS_AC_KERNEL_INODE_TIMES
+	ZFS_AC_KERNEL_INODE_LOCK
+	ZFS_AC_KERNEL_GROUP_INFO_GID
+	ZFS_AC_KERNEL_WRITE
+	ZFS_AC_KERNEL_READ
+	ZFS_AC_KERNEL_TIMER_FUNCTION_TIMER_LIST
 	ZFS_AC_KERNEL_DECLARE_EVENT_CLASS
 	ZFS_AC_KERNEL_CURRENT_BIO_TAIL
-	ZFS_AC_KERNEL_BDEV_BLOCK_DEVICE_OPERATIONS
+	ZFS_AC_KERNEL_SUPER_USER_NS
+	ZFS_AC_KERNEL_SUBMIT_BIO
+	ZFS_AC_KERNEL_BLOCK_DEVICE_OPERATIONS_CHECK_EVENTS
 	ZFS_AC_KERNEL_BLOCK_DEVICE_OPERATIONS_RELEASE_VOID
 	ZFS_AC_KERNEL_TYPE_FMODE_T
-	ZFS_AC_KERNEL_KOBJ_NAME_LEN
-	ZFS_AC_KERNEL_3ARG_BLKDEV_GET
 	ZFS_AC_KERNEL_BLKDEV_GET_BY_PATH
+	ZFS_AC_KERNEL_BLKDEV_REREAD_PART
 	ZFS_AC_KERNEL_OPEN_BDEV_EXCLUSIVE
 	ZFS_AC_KERNEL_LOOKUP_BDEV
 	ZFS_AC_KERNEL_INVALIDATE_BDEV_ARGS
@@ -21,50 +53,73 @@ AC_DEFUN([ZFS_AC_CONFIG_KERNEL], [
 	ZFS_AC_KERNEL_BDEV_PHYSICAL_BLOCK_SIZE
 	ZFS_AC_KERNEL_BIO_BVEC_ITER
 	ZFS_AC_KERNEL_BIO_FAILFAST_DTD
+	ZFS_AC_KERNEL_BIO_SET_DEV
 	ZFS_AC_KERNEL_REQ_FAILFAST_MASK
+	ZFS_AC_KERNEL_REQ_OP_DISCARD
+	ZFS_AC_KERNEL_REQ_OP_SECURE_ERASE
+	ZFS_AC_KERNEL_REQ_OP_FLUSH
+	ZFS_AC_KERNEL_BIO_BI_OPF
 	ZFS_AC_KERNEL_BIO_END_IO_T_ARGS
+	ZFS_AC_KERNEL_BIO_BI_STATUS
 	ZFS_AC_KERNEL_BIO_RW_BARRIER
 	ZFS_AC_KERNEL_BIO_RW_DISCARD
+	ZFS_AC_KERNEL_BLK_QUEUE_BDI
+	ZFS_AC_KERNEL_BLK_QUEUE_FLAG_CLEAR
+	ZFS_AC_KERNEL_BLK_QUEUE_FLAG_SET
 	ZFS_AC_KERNEL_BLK_QUEUE_FLUSH
 	ZFS_AC_KERNEL_BLK_QUEUE_MAX_HW_SECTORS
 	ZFS_AC_KERNEL_BLK_QUEUE_MAX_SEGMENTS
+	ZFS_AC_KERNEL_BLK_QUEUE_HAVE_BIO_RW_UNPLUG
+	ZFS_AC_KERNEL_BLK_QUEUE_HAVE_BLK_PLUG
+	ZFS_AC_KERNEL_GET_DISK_AND_MODULE
 	ZFS_AC_KERNEL_GET_DISK_RO
-	ZFS_AC_KERNEL_GET_GENDISK
+	ZFS_AC_KERNEL_HAVE_BIO_SET_OP_ATTRS
+	ZFS_AC_KERNEL_GENERIC_READLINK_GLOBAL
 	ZFS_AC_KERNEL_DISCARD_GRANULARITY
 	ZFS_AC_KERNEL_CONST_XATTR_HANDLER
+	ZFS_AC_KERNEL_XATTR_HANDLER_NAME
 	ZFS_AC_KERNEL_XATTR_HANDLER_GET
 	ZFS_AC_KERNEL_XATTR_HANDLER_SET
 	ZFS_AC_KERNEL_XATTR_HANDLER_LIST
 	ZFS_AC_KERNEL_INODE_OWNER_OR_CAPABLE
 	ZFS_AC_KERNEL_POSIX_ACL_FROM_XATTR_USERNS
 	ZFS_AC_KERNEL_POSIX_ACL_RELEASE
+	ZFS_AC_KERNEL_SET_CACHED_ACL_USABLE
 	ZFS_AC_KERNEL_POSIX_ACL_CHMOD
-	ZFS_AC_KERNEL_POSIX_ACL_CACHING
 	ZFS_AC_KERNEL_POSIX_ACL_EQUIV_MODE_WANTS_UMODE_T
+	ZFS_AC_KERNEL_POSIX_ACL_VALID_WITH_NS
 	ZFS_AC_KERNEL_INODE_OPERATIONS_PERMISSION
 	ZFS_AC_KERNEL_INODE_OPERATIONS_PERMISSION_WITH_NAMEIDATA
 	ZFS_AC_KERNEL_INODE_OPERATIONS_CHECK_ACL
 	ZFS_AC_KERNEL_INODE_OPERATIONS_CHECK_ACL_WITH_FLAGS
 	ZFS_AC_KERNEL_INODE_OPERATIONS_GET_ACL
-	ZFS_AC_KERNEL_CURRENT_UMASK
+	ZFS_AC_KERNEL_INODE_OPERATIONS_SET_ACL
+	ZFS_AC_KERNEL_INODE_OPERATIONS_GETATTR
+	ZFS_AC_KERNEL_INODE_SET_FLAGS
+	ZFS_AC_KERNEL_INODE_SET_IVERSION
+	ZFS_AC_KERNEL_GET_ACL_HANDLE_CACHE
 	ZFS_AC_KERNEL_SHOW_OPTIONS
 	ZFS_AC_KERNEL_FILE_INODE
+	ZFS_AC_KERNEL_FILE_DENTRY
 	ZFS_AC_KERNEL_FSYNC
 	ZFS_AC_KERNEL_EVICT_INODE
 	ZFS_AC_KERNEL_DIRTY_INODE_WITH_FLAGS
 	ZFS_AC_KERNEL_NR_CACHED_OBJECTS
 	ZFS_AC_KERNEL_FREE_CACHED_OBJECTS
 	ZFS_AC_KERNEL_FALLOCATE
+	ZFS_AC_KERNEL_AIO_FSYNC
 	ZFS_AC_KERNEL_MKDIR_UMODE_T
 	ZFS_AC_KERNEL_LOOKUP_NAMEIDATA
 	ZFS_AC_KERNEL_CREATE_NAMEIDATA
 	ZFS_AC_KERNEL_GET_LINK
 	ZFS_AC_KERNEL_PUT_LINK
+	ZFS_AC_KERNEL_TMPFILE
 	ZFS_AC_KERNEL_TRUNCATE_RANGE
 	ZFS_AC_KERNEL_AUTOMOUNT
 	ZFS_AC_KERNEL_ENCODE_FH_WITH_INODE
 	ZFS_AC_KERNEL_COMMIT_METADATA
 	ZFS_AC_KERNEL_CLEAR_INODE
+	ZFS_AC_KERNEL_SETATTR_PREPARE
 	ZFS_AC_KERNEL_INSERT_INODE_LOCKED
 	ZFS_AC_KERNEL_D_MAKE_ROOT
 	ZFS_AC_KERNEL_D_OBTAIN_ALIAS
@@ -75,38 +130,43 @@ AC_DEFUN([ZFS_AC_CONFIG_KERNEL], [
 	ZFS_AC_KERNEL_TRUNCATE_SETSIZE
 	ZFS_AC_KERNEL_6ARGS_SECURITY_INODE_INIT_SECURITY
 	ZFS_AC_KERNEL_CALLBACK_SECURITY_INODE_INIT_SECURITY
-	ZFS_AC_KERNEL_MOUNT_NODEV
+	ZFS_AC_KERNEL_FST_MOUNT
 	ZFS_AC_KERNEL_SHRINK
 	ZFS_AC_KERNEL_SHRINK_CONTROL_HAS_NID
+	ZFS_AC_KERNEL_SHRINK_CONTROL_STRUCT
+	ZFS_AC_KERNEL_SHRINKER_CALLBACK
 	ZFS_AC_KERNEL_S_INSTANCES_LIST_HEAD
 	ZFS_AC_KERNEL_S_D_OP
-	ZFS_AC_KERNEL_BDI_SETUP_AND_REGISTER
+	ZFS_AC_KERNEL_BDI
 	ZFS_AC_KERNEL_SET_NLINK
 	ZFS_AC_KERNEL_ELEVATOR_CHANGE
 	ZFS_AC_KERNEL_5ARG_SGET
 	ZFS_AC_KERNEL_LSEEK_EXECUTE
 	ZFS_AC_KERNEL_VFS_ITERATE
 	ZFS_AC_KERNEL_VFS_RW_ITERATE
+	ZFS_AC_KERNEL_VFS_DIRECT_IO
+	ZFS_AC_KERNEL_GENERIC_WRITE_CHECKS
 	ZFS_AC_KERNEL_KMAP_ATOMIC_ARGS
 	ZFS_AC_KERNEL_FOLLOW_DOWN_ONE
 	ZFS_AC_KERNEL_MAKE_REQUEST_FN
-	ZFS_AC_KERNEL_GENERIC_IO_ACCT
+	ZFS_AC_KERNEL_GENERIC_IO_ACCT_3ARG
+	ZFS_AC_KERNEL_GENERIC_IO_ACCT_4ARG
 	ZFS_AC_KERNEL_FPU
+	ZFS_AC_KERNEL_KUID_HELPERS
+	ZFS_AC_KERNEL_MODULE_PARAM_CALL_CONST
+	ZFS_AC_KERNEL_RENAME_WANTS_FLAGS
+	ZFS_AC_KERNEL_HAVE_GENERIC_SETXATTR
+	ZFS_AC_KERNEL_CURRENT_TIME
+	ZFS_AC_KERNEL_GLOBAL_PAGE_STATE
+	ZFS_AC_KERNEL_ACL_HAS_REFCOUNT
+	ZFS_AC_KERNEL_USERNS_CAPABILITIES
+	ZFS_AC_KERNEL_IN_COMPAT_SYSCALL
 
 	AS_IF([test "$LINUX_OBJ" != "$LINUX"], [
-		KERNELMAKE_PARAMS="$KERNELMAKE_PARAMS O=$LINUX_OBJ"
+		KERNEL_MAKE="$KERNEL_MAKE O=$LINUX_OBJ"
 	])
-	AC_SUBST(KERNELMAKE_PARAMS)
 
-
-	dnl # -Wall -fno-strict-aliasing -Wstrict-prototypes and other
-	dnl # compiler options are added by the kernel build system.
-	KERNELCPPFLAGS="$KERNELCPPFLAGS $NO_UNUSED_BUT_SET_VARIABLE"
-	KERNELCPPFLAGS="$KERNELCPPFLAGS $NO_BOOL_COMPARE"
-	KERNELCPPFLAGS="$KERNELCPPFLAGS -DHAVE_SPL -D_KERNEL"
-	KERNELCPPFLAGS="$KERNELCPPFLAGS -DTEXT_DOMAIN=\\\"zfs-linux-kernel\\\""
-
-	AC_SUBST(KERNELCPPFLAGS)
+	AC_SUBST(KERNEL_MAKE)
 ])
 
 dnl #
@@ -173,6 +233,7 @@ AC_DEFUN([ZFS_AC_KERNEL], [
 		AS_IF([test "$kernelsrc" = "NONE"], [
 			kernsrcver=NONE
 		])
+		withlinux=yes
 	])
 
 	AC_MSG_RESULT([$kernelsrc])
@@ -185,7 +246,7 @@ AC_DEFUN([ZFS_AC_KERNEL], [
 
 	AC_MSG_CHECKING([kernel build directory])
 	AS_IF([test -z "$kernelbuild"], [
-		AS_IF([test -e "/lib/modules/$(uname -r)/build"], [
+		AS_IF([test x$withlinux != xyes -a -e "/lib/modules/$(uname -r)/build"], [
 			kernelbuild=`readlink -f /lib/modules/$(uname -r)/build`
 		], [test -d ${kernelsrc}-obj/${target_cpu}/${target_cpu}], [
 			kernelbuild=${kernelsrc}-obj/${target_cpu}/${target_cpu}
@@ -245,202 +306,93 @@ AC_DEFUN([ZFS_AC_KERNEL], [
 	ZFS_AC_MODULE_SYMVERS
 ])
 
-
 dnl #
-dnl # Detect the SPL module to be built against
+dnl # Detect the QAT module to be built against
+dnl # QAT provides hardware acceleration for data compression:
+dnl # 	https://01.org/intel-quickassist-technology
+dnl # * Download and install QAT driver from the above link
+dnl # * Start QAT driver in your system:
+dnl # 	service qat_service start
+dnl # * Enable QAT in ZFS, e.g.:
+dnl # 	./configure --with-qat=<qat-driver-path>/QAT1.6
+dnl #	make
+dnl # * Set GZIP compression in ZFS dataset:
+dnl # 	zfs set compression = gzip <dataset>
+dnl # Then the data written to this ZFS pool is compressed
+dnl # by QAT accelerator automatically, and de-compressed by
+dnl # QAT when read from the pool.
+dnl # * Get QAT hardware statistics by:
+dnl #	cat /proc/icp_dh895xcc_dev/qat
+dnl # * To disable QAT:
+dnl # 	insmod zfs.ko zfs_qat_disable=1
 dnl #
-AC_DEFUN([ZFS_AC_SPL], [
-	AC_ARG_WITH([spl],
-		AS_HELP_STRING([--with-spl=PATH],
-		[Path to spl source]),
+AC_DEFUN([ZFS_AC_QAT], [
+	AC_ARG_WITH([qat],
+		AS_HELP_STRING([--with-qat=PATH],
+		[Path to qat source]),
 		AS_IF([test "$withval" = "yes"],
-			AC_MSG_ERROR([--with-spl=PATH requires a PATH]),
-			[splsrc="$withval"]))
+			AC_MSG_ERROR([--with-qat=PATH requires a PATH]),
+			[qatsrc="$withval"]))
 
-	AC_ARG_WITH([spl-obj],
-		AS_HELP_STRING([--with-spl-obj=PATH],
-		[Path to spl build objects]),
-		[splbuild="$withval"])
+	AC_ARG_WITH([qat-obj],
+		AS_HELP_STRING([--with-qat-obj=PATH],
+		[Path to qat build objects]),
+		[qatbuild="$withval"])
 
-	AC_ARG_WITH([spl-timeout],
-		AS_HELP_STRING([--with-spl-timeout=SECS],
-		[Wait SECS for SPL header and symver file @<:@default=0@:>@]),
-		[timeout="$withval"], [timeout=0])
-
-	dnl #
-	dnl # The existence of spl.release.in is used to identify a valid
-	dnl # source directory.  In order of preference:
-	dnl #
-	splsrc0="/var/lib/dkms/spl/${VERSION}/build"
-	splsrc1="/usr/local/src/spl-${VERSION}/${LINUX_VERSION}"
-	splsrc2="/usr/local/src/spl-${VERSION}"
-	splsrc3="/usr/src/spl-${VERSION}/${LINUX_VERSION}"
-	splsrc4="/usr/src/spl-${VERSION}"
-	splsrc5="../spl/"
-	splsrc6="$LINUX"
-
-	AC_MSG_CHECKING([spl source directory])
-	AS_IF([test -z "${splsrc}"], [
-		[all_spl_sources="
-		${splsrc0}
-		${splsrc1}
-		${splsrc2}
-		${splsrc3}
-		${splsrc4}
-		${splsrc5}
-		${splsrc6}"],
-		AS_IF([ test -e "${splsrc0}/spl.release.in"], [
-			splsrc=${splsrc0}
-		], [ test -e "${splsrc1}/spl.release.in"], [
-			splsrc=${splsrc1}
-		], [ test -e "${splsrc2}/spl.release.in"], [
-			splsrc=${splsrc2}
-		], [ test -e "${splsrc3}/spl.release.in"], [
-			splsrc=$(readlink -f "${splsrc3}")
-		], [ test -e "${splsrc4}/spl.release.in" ], [
-			splsrc=${splsrc4}
-		], [ test -e "${splsrc5}/spl.release.in"], [
-			splsrc=$(readlink -f "${splsrc5}")
-		], [ test -e "${splsrc6}/spl.release.in" ], [
-			splsrc=${splsrc6}
-		], [
-			splsrc="[Not found]"
-		])
-	], [
-		[all_spl_sources="$withval"],
-		AS_IF([test "$splsrc" = "NONE"], [
-			splbuild=NONE
-			splsrcver=NONE
+	AS_IF([test ! -z "${qatsrc}"], [
+		AC_MSG_CHECKING([qat source directory])
+		AC_MSG_RESULT([$qatsrc])
+		QAT_SRC="${qatsrc}/quickassist"
+		AS_IF([ test ! -e "$QAT_SRC/include/cpa.h"], [
+			AC_MSG_ERROR([
+		*** Please make sure the qat driver package is installed
+		*** and specify the location of the qat source with the
+		*** '--with-qat=PATH' option then try again. Failed to
+		*** find cpa.h in:
+		${QAT_SRC}/include])
 		])
 	])
 
-	AC_MSG_RESULT([$splsrc])
-	AS_IF([ test ! -e "$splsrc/spl.release.in"], [
-		AC_MSG_ERROR([
-	*** Please make sure the kmod spl devel package for your distribution
-	*** is installed then try again.  If that fails you can specify the
-	*** location of the spl source with the '--with-spl=PATH' option.
-	*** The spl version must match the version of ZFS you are building,
-	*** ${VERSION}.  Failed to find spl.release.in in the following:
-	$all_spl_sources])
+	AS_IF([test ! -z "${qatsrc}"], [
+		AC_MSG_CHECKING([qat build directory])
+		AS_IF([test -z "$qatbuild"], [
+			qatbuild="${qatsrc}/build"
+		])
+
+		AC_MSG_RESULT([$qatbuild])
+		QAT_OBJ=${qatbuild}
+		AS_IF([ ! test -e "$QAT_OBJ/icp_qa_al.ko" && ! test -e "$QAT_OBJ/qat_api.ko"], [
+			AC_MSG_ERROR([
+		*** Please make sure the qat driver is installed then try again.
+		*** Failed to find icp_qa_al.ko or qat_api.ko in:
+		$QAT_OBJ])
+		])
+
+		AC_SUBST(QAT_SRC)
+		AC_SUBST(QAT_OBJ)
+
+		AC_DEFINE(HAVE_QAT, 1,
+		[qat is enabled and existed])
 	])
 
 	dnl #
-	dnl # The existence of the spl_config.h is used to identify a valid
-	dnl # spl object directory.  In many cases the object and source
-	dnl # directory are the same, however the objects may also reside
-	dnl # is a subdirectory named after the kernel version.
+	dnl # Detect the name used for the QAT Module.symvers file.
 	dnl #
-	dnl # This file is supposed to be available after DKMS finishes
-	dnl # building the SPL kernel module for the target kernel.  The
-	dnl # '--with-spl-timeout' option can be passed to pause here,
-	dnl # waiting for the file to appear from a concurrently building
-	dnl # SPL package.
-	dnl #
-	AC_MSG_CHECKING([spl build directory])
+	AS_IF([test ! -z "${qatsrc}"], [
+		AC_MSG_CHECKING([qat file for module symbols])
+		QAT_SYMBOLS=$QAT_SRC/lookaside/access_layer/src/Module.symvers
 
-	all_spl_config_locs="${splsrc}/${LINUX_VERSION}
-	${splsrc}"
-
-	while true; do
-		AS_IF([test -z "$splbuild"], [
-			AS_IF([ test -e "${splsrc}/${LINUX_VERSION}/spl_config.h" ], [
-				splbuild="${splsrc}/${LINUX_VERSION}"
-			], [ test -e "${splsrc}/spl_config.h" ], [
-				splbuild="${splsrc}"
-			], [ find -L "${splsrc}" -name spl_config.h 2> /dev/null | grep -wq spl_config.h ], [
-				splbuild=$(find -L "${splsrc}" -name spl_config.h | sed 's,/spl_config.h,,')
-			], [
-				splbuild="[Not found]"
+		AS_IF([test -r $QAT_SYMBOLS], [
+			AC_MSG_RESULT([$QAT_SYMBOLS])
+			AC_SUBST(QAT_SYMBOLS)
+		],[
+                       AC_MSG_ERROR([
+			*** Please make sure the qat driver is installed then try again.
+			*** Failed to find Module.symvers in:
+			$QAT_SYMBOLS])
 			])
 		])
-		AS_IF([test -e "$splbuild/spl_config.h" -o $timeout -le 0], [
-			break;
-		], [
-			sleep 1
-			timeout=$((timeout-1))
-		])
-	done
-
-	AC_MSG_RESULT([$splbuild])
-	AS_IF([ ! test -e "$splbuild/spl_config.h"], [
-		AC_MSG_ERROR([
-	*** Please make sure the kmod spl devel <kernel> package for your
-	*** distribution is installed then try again.  If that fails you
-	*** can specify the location of the spl objects with the
-	*** '--with-spl-obj=PATH' option.  Failed to find spl_config.h in
-	*** any of the following:
-	$all_spl_config_locs])
 	])
-
-	AC_MSG_CHECKING([spl source version])
-	AS_IF([test -r $splbuild/spl_config.h &&
-		fgrep -q SPL_META_VERSION $splbuild/spl_config.h], [
-
-		splsrcver=`(echo "#include <spl_config.h>";
-		            echo "splsrcver=SPL_META_VERSION-SPL_META_RELEASE") |
-		            cpp -I $splbuild |
-		            grep "^splsrcver=" | tr -d \" | cut -d= -f2`
-	])
-
-	AS_IF([test -z "$splsrcver"], [
-		AC_MSG_RESULT([Not found])
-		AC_MSG_ERROR([
-	*** Cannot determine the version of the spl source.
-	*** Please prepare the spl source before running this script])
-	])
-
-	AC_MSG_RESULT([$splsrcver])
-
-	SPL=${splsrc}
-	SPL_OBJ=${splbuild}
-	SPL_VERSION=${splsrcver}
-
-	AC_SUBST(SPL)
-	AC_SUBST(SPL_OBJ)
-	AC_SUBST(SPL_VERSION)
-
-	dnl #
-	dnl # Detect the name used for the SPL Module.symvers file.  If one
-	dnl # does not exist this is likely because the SPL has been configured
-	dnl # but not built.  The '--with-spl-timeout' option can be passed
-	dnl # to pause here, waiting for the file to appear from a concurrently
-	dnl # building SPL package.  If the file does not appear in time, a good
-	dnl # guess is made as to what this file will be named based on what it
-	dnl # is named in the kernel build products.  This file will first be
-	dnl # used at link time so if the guess is wrong the build will fail
-	dnl # then.  This unfortunately means the ZFS package does not contain a
-	dnl # reliable mechanism to detect symbols exported by the SPL at
-	dnl # configure time.
-	dnl #
-	AC_MSG_CHECKING([spl file name for module symbols])
-	SPL_SYMBOLS=NONE
-
-	while true; do
-		AS_IF([test -r $SPL_OBJ/Module.symvers], [
-			SPL_SYMBOLS=Module.symvers
-		], [test -r $SPL_OBJ/Modules.symvers], [
-			SPL_SYMBOLS=Modules.symvers
-		], [test -r $SPL_OBJ/module/Module.symvers], [
-			SPL_SYMBOLS=Module.symvers
-		], [test -r $SPL_OBJ/module/Modules.symvers], [
-			SPL_SYMBOLS=Modules.symvers
-		])
-
-		AS_IF([test $SPL_SYMBOLS != NONE -o $timeout -le 0], [
-			break;
-		], [
-			sleep 1
-			timeout=$((timeout-1))
-		])
-	done
-
-	AS_IF([test "$SPL_SYMBOLS" = NONE], [
-		SPL_SYMBOLS=$LINUX_SYMBOLS
-	])
-
-	AC_MSG_RESULT([$SPL_SYMBOLS])
-	AC_SUBST(SPL_SYMBOLS)
 ])
 
 dnl #
@@ -484,6 +436,9 @@ AC_DEFUN([ZFS_AC_KERNEL_CONFIG], [
 
 	ZFS_AC_KERNEL_CONFIG_THREAD_SIZE
 	ZFS_AC_KERNEL_CONFIG_DEBUG_LOCK_ALLOC
+	ZFS_AC_KERNEL_CONFIG_TRIM_UNUSED_KSYMS
+	ZFS_AC_KERNEL_CONFIG_ZLIB_INFLATE
+	ZFS_AC_KERNEL_CONFIG_ZLIB_DEFLATE
 ])
 
 dnl #
@@ -554,6 +509,27 @@ AC_DEFUN([ZFS_AC_KERNEL_CONFIG_DEBUG_LOCK_ALLOC], [
 ])
 
 dnl #
+dnl # Check CONFIG_TRIM_UNUSED_KSYMS
+dnl #
+dnl # Verify the kernel has CONFIG_TRIM_UNUSED_KSYMS disabled.
+dnl #
+AC_DEFUN([ZFS_AC_KERNEL_CONFIG_TRIM_UNUSED_KSYMS], [
+	AC_MSG_CHECKING([whether CONFIG_TRIM_UNUSED_KSYM is disabled])
+	ZFS_LINUX_TRY_COMPILE([
+		#if defined(CONFIG_TRIM_UNUSED_KSYMS)
+		#error CONFIG_TRIM_UNUSED_KSYMS not defined
+		#endif
+	],[ ],[
+		AC_MSG_RESULT([yes])
+	],[
+		AC_MSG_RESULT([no])
+		AC_MSG_ERROR([
+	*** This kernel has unused symbols trimming enabled, please disable.
+	*** Rebuild the kernel with CONFIG_TRIM_UNUSED_KSYMS=n set.])
+	])
+])
+
+dnl #
 dnl # ZFS_LINUX_CONFTEST_H
 dnl #
 AC_DEFUN([ZFS_LINUX_CONFTEST_H], [
@@ -598,7 +574,7 @@ AC_DEFUN([ZFS_LINUX_COMPILE_IFELSE], [
 	modpost_flag=''
 	test "x$enable_linux_builtin" = xyes && modpost_flag='modpost=true' # fake modpost stage
 	AS_IF(
-		[AC_TRY_COMMAND(cp conftest.c conftest.h build && make [$2] -C $LINUX_OBJ EXTRA_CFLAGS="-Werror $EXTRA_KCFLAGS" $ARCH_UM M=$PWD/build $modpost_flag) >/dev/null && AC_TRY_COMMAND([$3])],
+		[AC_TRY_COMMAND(cp conftest.c conftest.h build && make [$2] -C $LINUX_OBJ EXTRA_CFLAGS="-Werror $FRAME_LARGER_THAN $EXTRA_KCFLAGS" $ARCH_UM M=$PWD/build $modpost_flag) >/dev/null && AC_TRY_COMMAND([$3])],
 		[$4],
 		[_AC_MSG_LOG_CONFTEST m4_ifvaln([$5],[$5])]
 	)

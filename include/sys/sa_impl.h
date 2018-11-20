@@ -110,7 +110,7 @@ typedef struct sa_idx_tab {
 	list_node_t	sa_next;
 	sa_lot_t	*sa_layout;
 	uint16_t	*sa_variable_lengths;
-	refcount_t	sa_refcount;
+	zfs_refcount_t	sa_refcount;
 	uint32_t	*sa_idx_tab;	/* array of offsets */
 } sa_idx_tab_t;
 
@@ -235,7 +235,7 @@ struct sa_handle {
 #define	SA_BONUSTYPE_FROM_DB(db) \
 	(dmu_get_bonustype((dmu_buf_t *)db))
 
-#define	SA_BLKPTR_SPACE	(DN_MAX_BONUSLEN - sizeof (blkptr_t))
+#define	SA_BLKPTR_SPACE	(DN_OLD_MAX_BONUSLEN - sizeof (blkptr_t))
 
 #define	SA_LAYOUT_NUM(x, type) \
 	((!IS_SA_BONUSTYPE(type) ? 0 : (((IS_SA_BONUSTYPE(type)) && \

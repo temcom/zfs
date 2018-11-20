@@ -1,5 +1,12 @@
 %{?!packager: %define packager Brian Behlendorf <behlendorf1@llnl.gov>}
 
+%if ! 0%{?rhel}%{?fedora}%{?mageia}%{?suse_version}
+%define not_rpm 1
+%endif
+
+# See comment in zfs.spec.in.
+%global __brp_mangle_shebangs_exclude_from arc_summary.py|arcstat.py|dbufstat.py|test-runner.py|zts-report.py
+
 %define module  @PACKAGE@
 %define mkconf  scripts/dkms.mkconf
 
@@ -16,11 +23,14 @@ Source0:        %{module}-%{version}.tar.gz
 BuildRoot:      %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 BuildArch:      noarch
 
-Requires:       dkms >= 2.2.0.3-20
-Requires:       spl-dkms = %{version}
+Requires:       dkms >= 2.2.0.3
 Requires:       gcc, make, perl
+%if 0%{?rhel}%{?fedora}%{?mageia}%{?suse_version}
 Requires:       kernel-devel
+Obsoletes:      spl-dkms
+%endif
 Provides:       %{module}-kmod = %{version}
+AutoReqProv:    no
 
 %description
 This package contains the dkms ZFS kernel modules.
@@ -69,10 +79,6 @@ DKMS_META_ALIAS=`cat $CONFIG_H 2>/dev/null |
 if [ "$SPEC_META_ALIAS" = "$DKMS_META_ALIAS" ]; then
     echo -e
     echo -e "Uninstall of %{module} module ($SPEC_META_ALIAS) beginning:"
-    dkms remove -m %{module} -v %{version} --all --rpm_safe_upgrade
+    dkms remove -m %{module} -v %{version} --all %{!?not_rpm:--rpm_safe_upgrade}
 fi
 exit 0
-
-%changelog
-* %(date "+%a %b %d %Y") %packager %{version}-%{release}
-- Automatic build by DKMS

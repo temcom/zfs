@@ -26,13 +26,11 @@
 #
 
 #
-# Copyright (c) 2013 by Delphix. All rights reserved.
+# Copyright (c) 2013, 2016 by Delphix. All rights reserved.
 #
 
 . $STF_SUITE/include/libtest.shlib
 
-[[ -f $OLD_HISTORY ]] && $RM -f $OLD_HISTORY
-[[ -f $TMP_HISTORY ]] && $RM -f $TMP_HISTORY
-[[ -f $NEW_HISTORY ]] && $RM -f $NEW_HISTORY
+rm -f $TEST_BASE_DIR/{old,tmp,new}_history.*
 
 default_cleanup

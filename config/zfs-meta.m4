@@ -60,9 +60,12 @@ AC_DEFUN([ZFS_AC_META], [
 
 		ZFS_META_VERSION=_ZFS_AC_META_GETVAL([Version]);
 		if test -n "$ZFS_META_VERSION"; then
-			AC_DEFINE_UNQUOTED([ZFS_META_VERSION], ["$ZFS_META_VERSION"],
-				[Define the project version.]
-			)
+			AC_DEFINE_UNQUOTED([ZFS_META_VERSION],
+			    ["$ZFS_META_VERSION"],
+			    [Define the project version.])
+			AC_DEFINE_UNQUOTED([SPL_META_VERSION],
+			    [ZFS_META_VERSION],
+			    [Defined for legacy compatibility.])
 			AC_SUBST([ZFS_META_VERSION])
 		fi
 
@@ -74,13 +77,24 @@ AC_DEFUN([ZFS_AC_META], [
 			if test -n "${_release}"; then
 				ZFS_META_RELEASE=${_release}
 				_zfs_ac_meta_type="git describe"
+			else
+				_match="${ZFS_META_NAME}-${ZFS_META_VERSION}-${ZFS_META_RELEASE}"
+	                        _alias=$(git describe --match=${_match} 2>/dev/null)
+	                        _release=$(echo ${_alias}|cut -f3- -d'-'|sed 's/-/_/g')
+				if test -n "${_release}"; then
+					ZFS_META_RELEASE=${_release}
+					_zfs_ac_meta_type="git describe"
+				fi
 			fi
 		fi
 
 		if test -n "$ZFS_META_RELEASE"; then
-			AC_DEFINE_UNQUOTED([ZFS_META_RELEASE], ["$ZFS_META_RELEASE"],
-				[Define the project release.]
-			)
+			AC_DEFINE_UNQUOTED([ZFS_META_RELEASE],
+			     ["$ZFS_META_RELEASE"],
+			     [Define the project release.])
+			AC_DEFINE_UNQUOTED([SPL_META_RELEASE],
+			    [ZFS_META_RELEASE],
+			    [Defined for legacy compatibility.])
 			AC_SUBST([ZFS_META_RELEASE])
 
 			RELEASE="$ZFS_META_RELEASE"
@@ -100,9 +114,11 @@ AC_DEFUN([ZFS_AC_META], [
 				test -n "$ZFS_META_RELEASE" && 
 				        ZFS_META_ALIAS="$ZFS_META_ALIAS-$ZFS_META_RELEASE"
 				AC_DEFINE_UNQUOTED([ZFS_META_ALIAS],
-					["$ZFS_META_ALIAS"],
-					[Define the project alias string.] 
-				)
+				    ["$ZFS_META_ALIAS"],
+				    [Define the project alias string.])
+				AC_DEFINE_UNQUOTED([SPL_META_ALIAS],
+				    [ZFS_META_ALIAS],
+				    [Defined for legacy compatibility.])
 				AC_SUBST([ZFS_META_ALIAS])
 		fi
 

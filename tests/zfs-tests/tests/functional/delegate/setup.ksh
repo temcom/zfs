@@ -26,18 +26,22 @@
 #
 
 #
-# Copyright (c) 2013 by Delphix. All rights reserved.
+# Copyright (c) 2013, 2016 by Delphix. All rights reserved.
+# Copyright (c) 2018 George Melikov. All Rights Reserved.
 #
 
+. $STF_SUITE/include/libtest.shlib
 . $STF_SUITE/tests/functional/delegate/delegate_common.kshlib
 
-# check svc:/network/nis/client:default state
-# disable it if the state is ON
-# and the state will be restored during cleanup.ksh
-log_must $RM -f $NISSTAFILE
-if [[ "ON" == $($SVCS -H -o sta svc:/network/nis/client:default) ]]; then
-	log_must $SVCADM disable -t svc:/network/nis/client:default
-	log_must $TOUCH $NISSTAFILE
+if ! is_linux; then
+	# check svc:/network/nis/client:default state
+	# disable it if the state is ON
+	# and the state will be restored during cleanup.ksh
+	log_must rm -f $NISSTAFILE
+	if [[ "ON" == $(svcs -H -o sta svc:/network/nis/client:default) ]]; then
+		log_must svcadm disable -t svc:/network/nis/client:default
+		log_must touch $NISSTAFILE
+	fi
 fi
 
 cleanup_user_group
@@ -52,8 +56,22 @@ log_must add_group $OTHER_GROUP
 log_must add_user $OTHER_GROUP $OTHER1
 log_must add_user $OTHER_GROUP $OTHER2
 
-DISK=${DISKS%% *}
-default_volume_setup $DISK
-log_must $CHMOD 777 $TESTDIR
+#
+# Verify the test user can execute the zfs utilities.  This may not
+# be possible due to default permissions on the user home directory.
+# This can be resolved granting group read access.
+#
+# chmod 0750 $HOME
+#
+user_run $STAFF1 zfs list
+if [ $? -ne 0 ]; then
+	log_unsupported "Test user $STAFF1 cannot execute zfs utilities"
+fi
 
-log_pass
+DISK=${DISKS%% *}
+
+if is_linux; then
+	log_must set_tunable64 zfs_admin_snapshot 1
+fi
+
+default_volume_setup $DISK

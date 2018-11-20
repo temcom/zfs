@@ -24,25 +24,16 @@
  * Use is subject to license terms.
  */
 
-
-
-#include <sys/stropts.h>
 #include <sys/isa_defs.h>
 #include <sys/nvpair.h>
 #include <sys/sysmacros.h>
-#if defined(_KERNEL) && !defined(_BOOT)
-#include <sys/varargs.h>
-#else
-#include <stdarg.h>
-#include <strings.h>
-#endif
 
 /*
  * This allocator is very simple.
  *  - it uses a pre-allocated buffer for memory allocations.
  *  - it does _not_ free memory in the pre-allocated buffer.
  *
- * The reason for the selected implemention is simplicity.
+ * The reason for the selected implementation is simplicity.
  * This allocator is designed for the usage in interrupt context when
  * the caller may not wait for free memory.
  */
@@ -110,15 +101,15 @@ nv_fixed_reset(nv_alloc_t *nva)
 }
 
 const nv_alloc_ops_t nv_fixed_ops_def = {
-	nv_fixed_init,	/* nv_ao_init() */
-	NULL,		/* nv_ao_fini() */
-	nv_fixed_alloc,	/* nv_ao_alloc() */
-	nv_fixed_free,	/* nv_ao_free() */
-	nv_fixed_reset	/* nv_ao_reset() */
+	.nv_ao_init = nv_fixed_init,
+	.nv_ao_fini = NULL,
+	.nv_ao_alloc = nv_fixed_alloc,
+	.nv_ao_free = nv_fixed_free,
+	.nv_ao_reset = nv_fixed_reset
 };
 
 const nv_alloc_ops_t *nv_fixed_ops = &nv_fixed_ops_def;
 
-#if defined(_KERNEL) && defined(HAVE_SPL)
+#if defined(_KERNEL)
 EXPORT_SYMBOL(nv_fixed_ops);
 #endif

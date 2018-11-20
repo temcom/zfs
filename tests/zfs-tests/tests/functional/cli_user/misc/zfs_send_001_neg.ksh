@@ -26,11 +26,11 @@
 #
 
 #
-# Copyright (c) 2013 by Delphix. All rights reserved.
+# Copyright (c) 2013, 2016 by Delphix. All rights reserved.
 #
 
-. $STF_SUITE/tests/functional/cli_user/misc/misc.cfg
 . $STF_SUITE/include/libtest.shlib
+. $STF_SUITE/tests/functional/cli_user/misc/misc.cfg
 
 #
 # DESCRIPTION:
@@ -45,23 +45,23 @@
 
 function cleanup
 {
-	if [ -e /tmp/zfstest_datastream.$$ ]
+	if [ -e $TEST_BASE_DIR/zfstest_datastream.$$ ]
 	then
-		log_must $RM /tmp/zfstest_datastream.$$
+		log_must rm $TEST_BASE_DIR/zfstest_datastream.$$
 	fi
 }
 
 log_assert "zfs send returns an error when run as a user"
 log_onexit cleanup
 
-log_mustnot eval "$ZFS send $TESTPOOL/$TESTFS@snap > /tmp/zfstest_datastream.$$"
+log_mustnot eval "zfs send $TESTPOOL/$TESTFS@snap > $TEST_BASE_DIR/zfstest_datastream.$$"
 
 # Now check that the above command actually did nothing
 
 # We should have a non-zero-length file in /tmp
-if [ -s /tmp/zfstest_datastream.$$ ]
+if [ -s $TEST_BASE_DIR/zfstest_datastream.$$ ]
 then
-	log_fail "A zfs send file was created in /tmp/zfstest_datastream.$$ !"
+	log_fail "A zfs send file was created in $TEST_BASE_DIR/zfstest_datastream.$$ !"
 fi
 
 log_pass "zfs send returns an error when run as a user"

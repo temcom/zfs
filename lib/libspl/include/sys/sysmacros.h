@@ -39,10 +39,15 @@
 #ifndef ABS
 #define	ABS(a)		((a) < 0 ? -(a) : (a))
 #endif
+#ifndef ARRAY_SIZE
+#define	ARRAY_SIZE(a) (sizeof (a) / sizeof (a[0]))
+#endif
+#ifndef	DIV_ROUND_UP
+#define	DIV_ROUND_UP(n, d)	(((n) + (d) - 1) / (d))
+#endif
 
 #define	makedevice(maj, min)	makedev(maj, min)
 #define	_sysconf(a)		sysconf(a)
-#define	__NORETURN		__attribute__((noreturn))
 
 /*
  * Compatibility macros/typedefs needed for Solaris -> Linux port
@@ -92,5 +97,7 @@
 #if defined(_KERNEL) && !defined(_KMEMUSER) && !defined(offsetof)
 #define	offsetof(s, m)	((size_t)(&(((s *)0)->m)))
 #endif
+
+#define	_NOTE(x)
 
 #endif /* _LIBSPL_SYS_SYSMACROS_H */

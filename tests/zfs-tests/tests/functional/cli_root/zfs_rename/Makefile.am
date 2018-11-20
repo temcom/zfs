@@ -1,7 +1,5 @@
 pkgdatadir = $(datadir)/@PACKAGE@/zfs-tests/tests/functional/cli_root/zfs_rename
 dist_pkgdata_SCRIPTS = \
-	zfs_rename.cfg \
-	zfs_rename.kshlib \
 	setup.ksh \
 	cleanup.ksh \
 	zfs_rename_001_pos.ksh \
@@ -16,4 +14,12 @@ dist_pkgdata_SCRIPTS = \
 	zfs_rename_010_neg.ksh \
 	zfs_rename_011_pos.ksh \
 	zfs_rename_012_neg.ksh \
-	zfs_rename_013_pos.ksh
+	zfs_rename_013_pos.ksh \
+	zfs_rename_014_neg.ksh \
+	zfs_rename_encrypted_child.ksh \
+	zfs_rename_to_encrypted.ksh \
+	zfs_rename_mountpoint.ksh
+
+dist_pkgdata_DATA = \
+	zfs_rename.cfg \
+	zfs_rename.kshlib

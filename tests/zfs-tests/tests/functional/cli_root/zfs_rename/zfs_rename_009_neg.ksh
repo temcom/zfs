@@ -26,20 +26,20 @@
 #
 
 #
-# Copyright (c) 2012 by Delphix. All rights reserved.
+# Copyright (c) 2012, 2016 by Delphix. All rights reserved.
 #
 
 . $STF_SUITE/include/libtest.shlib
 
 #
 # DESCRIPTION:
-#	A snapshot already exists with the new name, then none of the
-#	snapshots is renamed.
+#	When renaming a set of snapshots, if a snapshot already exists with
+#	the new name, then none of the snapshots is renamed.
 #
 # STRATEGY:
-#	1. Create snapshot for a set of datasets.
+#	1. Create a snapshot for a set of datasets.
 #	2. Create a new snapshot for one of datasets.
-#	3. Using rename -r command with exists snapshot name.
+#	3. Attempt to "zfs rename -r" with the second snapshot's name.
 #	4. Verify none of the snapshots is renamed.
 #
 
@@ -47,29 +47,14 @@ verify_runnable "both"
 
 function cleanup
 {
-	typeset snaps=$($ZFS list -H -t snapshot -o name)
-	typeset exclude
-	typeset snap
-	typeset pool_name
-
-	if [[ -n $KEEP ]]; then
-		exclude=`eval $ECHO \"'(${KEEP})'\"`
-	fi
-
-	for snap in $snaps; do
-		pool_name=$($ECHO "$snap" | $AWK -F/ '{print $1}')
-		if [[ -n $exclude ]]; then
-			$ECHO "$pool_name" | $EGREP -v "$exclude" > /dev/null 2>&1
-			if [[ $? -eq 0 ]]; then
-				log_must $ZFS destroy $snap
-			fi
-		else
-			log_must $ZFS destroy $snap
-		fi
+	for poolname in $(get_all_pools); do
+		for snap in $(zfs list -H -t snapshot -o name -r $poolname); do
+			log_must zfs destroy $snap
+		done
 	done
 }
 
-log_assert "zfs rename -r failed, when snapshot name is already existing."
+log_assert "Verify zfs rename -r failed when the snapshot name already exists."
 log_onexit cleanup
 
 set -A datasets $TESTPOOL		$TESTPOOL/$TESTCTR \
@@ -78,15 +63,15 @@ if is_global_zone; then
 	datasets[${#datasets[@]}]=$TESTPOOL/$TESTVOL
 fi
 
-log_must $ZFS snapshot -r ${TESTPOOL}@snap
+log_must zfs snapshot -r ${TESTPOOL}@snap
 typeset -i i=0
 while ((i < ${#datasets[@]})); do
 	# Create one more snapshot
-	log_must $ZFS snapshot ${datasets[$i]}@snap2
-	log_mustnot $ZFS rename -r ${TESTPOOL}@snap ${TESTPOOL}@snap2
-	log_must $ZFS destroy ${datasets[$i]}@snap2
+	log_must zfs snapshot ${datasets[$i]}@snap2
+	log_mustnot zfs rename -r ${TESTPOOL}@snap ${TESTPOOL}@snap2
+	log_must zfs destroy ${datasets[$i]}@snap2
 
-	# Check datasets, make sure none of them was renamed.
+	# Check datasets, make sure none of them have snap2.
 	typeset -i j=0
 	while ((j < ${#datasets[@]})); do
 		if datasetexists ${datasets[$j]}@snap2 ; then
@@ -98,4 +83,4 @@ while ((i < ${#datasets[@]})); do
 	((i += 1))
 done
 
-log_pass "zfs rename -r failed, when snapshot name is already existing passed."
+log_pass "zfs rename -r failed when the snapshot name already exists."

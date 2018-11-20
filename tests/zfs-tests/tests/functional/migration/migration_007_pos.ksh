@@ -26,7 +26,7 @@
 #
 
 #
-# Copyright (c) 2013 by Delphix. All rights reserved.
+# Copyright (c) 2013, 2016 by Delphix. All rights reserved.
 #
 
 . $STF_SUITE/include/libtest.shlib
@@ -48,19 +48,19 @@ verify_runnable "both"
 
 function cleanup
 {
-	$RM -rf $TESTDIR/dd$$.dd
-	$RM -rf $TESTDIR/$BNAME
+	rm -rf $TESTDIR/dd$$.dd
+	rm -rf $TESTDIR/$BNAME
 }
 
 log_assert "Migrating test file from ZFS fs to ZFS fs using dd"
 
 log_onexit cleanup
 
-prepare $DNAME "$DD if=$BNAME obs=128k of=$TESTDIR/dd$$.dd"
+prepare $DNAME "dd if=$BNAME obs=128k of=$TESTDIR/dd$$.dd"
 (( $? != 0 )) && log_fail "Unable to create src archive"
 
-migrate $TESTDIR $SUMA $SUMB "$DD if=$TESTDIR/dd$$.dd obs=128k of=$BNAME"
-(( $? != 0 )) && log_fail "Uable to successfully migrate test file from" \
+migrate $TESTDIR $SUMA $SUMB "dd if=$TESTDIR/dd$$.dd obs=128k of=$BNAME"
+(( $? != 0 )) && log_fail "Unable to successfully migrate test file from" \
     "ZFS fs to ZFS fs"
 
-log_pass "Successully migrated test file from ZFS fs to ZFS fs".
+log_pass "Successfully migrated test file from ZFS fs to ZFS fs".

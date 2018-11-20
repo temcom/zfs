@@ -21,42 +21,27 @@
 
 /*
  * Copyright (c) 2005, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright (c) 2013 by Delphix. All rights reserved.
+ * Copyright (c) 2011, 2017 by Delphix. All rights reserved.
+ * Copyright (c) 2018 Datto Inc.
  */
 
 #ifndef	_LIBZFS_IMPL_H
 #define	_LIBZFS_IMPL_H
 
-#include <sys/dmu.h>
 #include <sys/fs/zfs.h>
-#include <sys/zfs_ioctl.h>
 #include <sys/spa.h>
 #include <sys/nvpair.h>
+#include <sys/dmu.h>
+#include <sys/zfs_ioctl.h>
 
 #include <libuutil.h>
 #include <libzfs.h>
 #include <libshare.h>
 #include <libzfs_core.h>
 
-#if defined(HAVE_LIBTOPO)
-#include <fm/libtopo.h>
-#endif /* HAVE_LIBTOPO */
-
 #ifdef	__cplusplus
 extern "C" {
 #endif
-
-#ifdef	VERIFY
-#undef	VERIFY
-#endif
-#define	VERIFY	verify
-
-typedef struct libzfs_fru {
-	char *zf_device;
-	char *zf_fru;
-	struct libzfs_fru *zf_chain;
-	struct libzfs_fru *zf_next;
-} libzfs_fru_t;
 
 struct libzfs_handle {
 	int libzfs_error;
@@ -75,14 +60,17 @@ struct libzfs_handle {
 	void *libzfs_sharehdl; /* libshare handle */
 	uint_t libzfs_shareflags;
 	boolean_t libzfs_mnttab_enable;
+	/*
+	 * We need a lock to handle the case where parallel mount
+	 * threads are populating the mnttab cache simultaneously. The
+	 * lock only protects the integrity of the avl tree, and does
+	 * not protect the contents of the mnttab entries themselves.
+	 */
+	pthread_mutex_t libzfs_mnttab_cache_lock;
 	avl_tree_t libzfs_mnttab_cache;
 	int libzfs_pool_iter;
-#if defined(HAVE_LIBTOPO)
-	topo_hdl_t *libzfs_topo_hdl;
-	libzfs_fru_t **libzfs_fru_hash;
-	libzfs_fru_t *libzfs_fru_list;
-#endif /* HAVE_LIBTOPO */
 	char libzfs_chassis_id[256];
+	boolean_t libzfs_prop_debug;
 };
 
 #define	ZFSSHARE_MISS	0x01	/* Didn't find entry in cache */
@@ -90,7 +78,7 @@ struct libzfs_handle {
 struct zfs_handle {
 	libzfs_handle_t *zfs_hdl;
 	zpool_handle_t *zpool_hdl;
-	char zfs_name[ZFS_MAXNAMELEN];
+	char zfs_name[ZFS_MAX_DATASET_NAME_LEN];
 	zfs_type_t zfs_type; /* type including snapshot */
 	zfs_type_t zfs_head_type; /* type excluding snapshot */
 	dmu_objset_stats_t zfs_dmustats;
@@ -111,7 +99,7 @@ struct zfs_handle {
 struct zpool_handle {
 	libzfs_handle_t *zpool_hdl;
 	zpool_handle_t *zpool_next;
-	char zpool_name[ZPOOL_MAXNAMELEN];
+	char zpool_name[ZFS_MAX_DATASET_NAME_LEN];
 	int zpool_state;
 	size_t zpool_config_size;
 	nvlist_t *zpool_config;
@@ -136,6 +124,8 @@ typedef enum {
 	SHARED_SMB = 0x4
 } zfs_share_type_t;
 
+#define	CONFIG_BUF_MINSIZE	262144
+
 int zfs_error(libzfs_handle_t *, int, const char *);
 int zfs_error_fmt(libzfs_handle_t *, int, const char *, ...);
 void zfs_error_aux(libzfs_handle_t *, const char *, ...);
@@ -150,8 +140,6 @@ int zfs_standard_error_fmt(libzfs_handle_t *, int, const char *, ...);
 int zpool_standard_error(libzfs_handle_t *, int, const char *);
 int zpool_standard_error_fmt(libzfs_handle_t *, int, const char *, ...);
 
-int get_dependents(libzfs_handle_t *, boolean_t, const char *, char ***,
-    size_t *);
 zfs_handle_t *make_dataset_handle_zc(libzfs_handle_t *, zfs_cmd_t *);
 zfs_handle_t *make_dataset_simple_handle_zc(zfs_handle_t *, zfs_cmd_t *);
 
@@ -166,6 +154,10 @@ int zprop_expand_list(libzfs_handle_t *hdl, zprop_list_t **plp,
  * mounted.
  */
 #define	CL_GATHER_MOUNT_ALWAYS	1
+/*
+ * changelist_gather() flag to force it to iterate on mounted datasets only
+ */
+#define	CL_GATHER_ITER_MOUNTED	2
 
 typedef struct prop_changelist prop_changelist_t;
 
@@ -212,8 +204,6 @@ extern int zfs_parse_options(char *, zfs_share_proto_t);
 
 extern int zfs_unshare_proto(zfs_handle_t *,
     const char *, zfs_share_proto_t *);
-
-extern void libzfs_fru_clear(libzfs_handle_t *, boolean_t);
 
 #ifdef	__cplusplus
 }

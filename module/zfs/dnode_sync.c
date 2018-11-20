@@ -21,7 +21,7 @@
 
 /*
  * Copyright (c) 2005, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright (c) 2012, 2015 by Delphix. All rights reserved.
+ * Copyright (c) 2012, 2018 by Delphix. All rights reserved.
  * Copyright (c) 2014 Spectra Logic Corporation, All rights reserved.
  */
 
@@ -31,6 +31,7 @@
 #include <sys/dmu.h>
 #include <sys/dmu_tx.h>
 #include <sys/dmu_objset.h>
+#include <sys/dmu_recv.h>
 #include <sys/dsl_dataset.h>
 #include <sys/spa.h>
 #include <sys/range_tree.h>
@@ -60,20 +61,14 @@ dnode_increase_indirection(dnode_t *dn, dmu_tx_t *tx)
 	dprintf("os=%p obj=%llu, increase to %d\n", dn->dn_objset,
 	    dn->dn_object, dn->dn_phys->dn_nlevels);
 
-	/* check for existing blkptrs in the dnode */
-	for (i = 0; i < nblkptr; i++)
-		if (!BP_IS_HOLE(&dn->dn_phys->dn_blkptr[i]))
-			break;
-	if (i != nblkptr) {
-		/* transfer dnode's block pointers to new indirect block */
-		(void) dbuf_read(db, NULL, DB_RF_MUST_SUCCEED|DB_RF_HAVESTRUCT);
-		ASSERT(db->db.db_data);
-		ASSERT(arc_released(db->db_buf));
-		ASSERT3U(sizeof (blkptr_t) * nblkptr, <=, db->db.db_size);
-		bcopy(dn->dn_phys->dn_blkptr, db->db.db_data,
-		    sizeof (blkptr_t) * nblkptr);
-		arc_buf_freeze(db->db_buf);
-	}
+	/* transfer dnode's block pointers to new indirect block */
+	(void) dbuf_read(db, NULL, DB_RF_MUST_SUCCEED|DB_RF_HAVESTRUCT);
+	ASSERT(db->db.db_data);
+	ASSERT(arc_released(db->db_buf));
+	ASSERT3U(sizeof (blkptr_t) * nblkptr, <=, db->db.db_size);
+	bcopy(dn->dn_phys->dn_blkptr, db->db.db_data,
+	    sizeof (blkptr_t) * nblkptr);
+	arc_buf_freeze(db->db_buf);
 
 	/* set dbuf's parent pointers to new indirect buf */
 	for (i = 0; i < nblkptr; i++) {
@@ -121,14 +116,10 @@ free_blocks(dnode_t *dn, blkptr_t *bp, int num, dmu_tx_t *tx)
 {
 	dsl_dataset_t *ds = dn->dn_objset->os_dsl_dataset;
 	uint64_t bytesfreed = 0;
-	int i;
 
 	dprintf("ds=%p obj=%llx num=%d\n", ds, dn->dn_object, num);
 
-	for (i = 0; i < num; i++, bp++) {
-		uint64_t lsize, lvl;
-		dmu_object_type_t type;
-
+	for (int i = 0; i < num; i++, bp++) {
 		if (BP_IS_HOLE(bp))
 			continue;
 
@@ -143,9 +134,9 @@ free_blocks(dnode_t *dn, blkptr_t *bp, int num, dmu_tx_t *tx)
 		 * records transmitted during a zfs send.
 		 */
 
-		lsize = BP_GET_LSIZE(bp);
-		type = BP_GET_TYPE(bp);
-		lvl = BP_GET_LEVEL(bp);
+		uint64_t lsize = BP_GET_LSIZE(bp);
+		dmu_object_type_t type = BP_GET_TYPE(bp);
+		uint64_t lvl = BP_GET_LEVEL(bp);
 
 		bzero(bp, sizeof (blkptr_t));
 
@@ -239,15 +230,30 @@ free_verify(dmu_buf_impl_t *db, uint64_t start, uint64_t end, dmu_tx_t *tx)
 }
 #endif
 
+/*
+ * We don't usually free the indirect blocks here.  If in one txg we have a
+ * free_range and a write to the same indirect block, it's important that we
+ * preserve the hole's birth times. Therefore, we don't free any any indirect
+ * blocks in free_children().  If an indirect block happens to turn into all
+ * holes, it will be freed by dbuf_write_children_ready, which happens at a
+ * point in the syncing process where we know for certain the contents of the
+ * indirect block.
+ *
+ * However, if we're freeing a dnode, its space accounting must go to zero
+ * before we actually try to free the dnode, or we will trip an assertion. In
+ * addition, we know the case described above cannot occur, because the dnode is
+ * being freed.  Therefore, we free the indirect blocks immediately in that
+ * case.
+ */
 static void
 free_children(dmu_buf_impl_t *db, uint64_t blkid, uint64_t nblks,
-    dmu_tx_t *tx)
+    boolean_t free_indirects, dmu_tx_t *tx)
 {
 	dnode_t *dn;
 	blkptr_t *bp;
 	dmu_buf_impl_t *subdb;
-	uint64_t start, end, dbstart, dbend, i;
-	int epbs, shift;
+	uint64_t start, end, dbstart, dbend;
+	unsigned int epbs, shift, i;
 
 	/*
 	 * There is a small possibility that this block will not be cached:
@@ -258,12 +264,31 @@ free_children(dmu_buf_impl_t *db, uint64_t blkid, uint64_t nblks,
 	if (db->db_state != DB_CACHED)
 		(void) dbuf_read(db, NULL, DB_RF_MUST_SUCCEED);
 
+	/*
+	 * If we modify this indirect block, and we are not freeing the
+	 * dnode (!free_indirects), then this indirect block needs to get
+	 * written to disk by dbuf_write().  If it is dirty, we know it will
+	 * be written (otherwise, we would have incorrect on-disk state
+	 * because the space would be freed but still referenced by the BP
+	 * in this indirect block).  Therefore we VERIFY that it is
+	 * dirty.
+	 *
+	 * Our VERIFY covers some cases that do not actually have to be
+	 * dirty, but the open-context code happens to dirty.  E.g. if the
+	 * blocks we are freeing are all holes, because in that case, we
+	 * are only freeing part of this indirect block, so it is an
+	 * ancestor of the first or last block to be freed.  The first and
+	 * last L1 indirect blocks are always dirtied by dnode_free_range().
+	 */
+	VERIFY(BP_GET_FILL(db->db_blkptr) == 0 || db->db_dirtycnt > 0);
+
 	dbuf_release_bp(db);
 	bp = db->db.db_data;
 
 	DB_DNODE_ENTER(db);
 	dn = DB_DNODE(db);
 	epbs = dn->dn_phys->dn_indblkshift - SPA_BLKPTRSHIFT;
+	ASSERT3U(epbs, <, 31);
 	shift = (db->db_level - 1) * epbs;
 	dbstart = db->db_blkid << epbs;
 	start = blkid >> shift;
@@ -283,35 +308,25 @@ free_children(dmu_buf_impl_t *db, uint64_t blkid, uint64_t nblks,
 		FREE_VERIFY(db, start, end, tx);
 		free_blocks(dn, bp, end-start+1, tx);
 	} else {
-		for (i = start; i <= end; i++, bp++) {
+		for (uint64_t id = start; id <= end; id++, bp++) {
 			if (BP_IS_HOLE(bp))
 				continue;
 			rw_enter(&dn->dn_struct_rwlock, RW_READER);
 			VERIFY0(dbuf_hold_impl(dn, db->db_level - 1,
-			    i, TRUE, FALSE, FTAG, &subdb));
+			    id, TRUE, FALSE, FTAG, &subdb));
 			rw_exit(&dn->dn_struct_rwlock);
 			ASSERT3P(bp, ==, subdb->db_blkptr);
 
-			free_children(subdb, blkid, nblks, tx);
+			free_children(subdb, blkid, nblks, free_indirects, tx);
 			dbuf_rele(subdb, FTAG);
 		}
 	}
 
-	/* If this whole block is free, free ourself too. */
-	for (i = 0, bp = db->db.db_data; i < 1 << epbs; i++, bp++) {
-		if (!BP_IS_HOLE(bp))
-			break;
-	}
-	if (i == 1 << epbs) {
-		/* didn't find any non-holes */
+	if (free_indirects) {
+		for (i = 0, bp = db->db.db_data; i < 1 << epbs; i++, bp++)
+			ASSERT(BP_IS_HOLE(bp));
 		bzero(db->db.db_data, db->db.db_size);
 		free_blocks(dn, db->db_blkptr, 1, tx);
-	} else {
-		/*
-		 * Partial block free; must be marked dirty so that it
-		 * will be written out.
-		 */
-		ASSERT(db->db_dirtycnt > 0);
 	}
 
 	DB_DNODE_EXIT(db);
@@ -324,7 +339,7 @@ free_children(dmu_buf_impl_t *db, uint64_t blkid, uint64_t nblks,
  */
 static void
 dnode_sync_free_range_impl(dnode_t *dn, uint64_t blkid, uint64_t nblks,
-    dmu_tx_t *tx)
+    boolean_t free_indirects, dmu_tx_t *tx)
 {
 	blkptr_t *bp = dn->dn_phys->dn_blkptr;
 	int dnlevel = dn->dn_phys->dn_nlevels;
@@ -353,11 +368,10 @@ dnode_sync_free_range_impl(dnode_t *dn, uint64_t blkid, uint64_t nblks,
 		int start = blkid >> shift;
 		int end = (blkid + nblks - 1) >> shift;
 		dmu_buf_impl_t *db;
-		int i;
 
 		ASSERT(start < dn->dn_phys->dn_nblkptr);
 		bp += start;
-		for (i = start; i <= end; i++, bp++) {
+		for (int i = start; i <= end; i++, bp++) {
 			if (BP_IS_HOLE(bp))
 				continue;
 			rw_enter(&dn->dn_struct_rwlock, RW_READER);
@@ -365,12 +379,17 @@ dnode_sync_free_range_impl(dnode_t *dn, uint64_t blkid, uint64_t nblks,
 			    TRUE, FALSE, FTAG, &db));
 			rw_exit(&dn->dn_struct_rwlock);
 
-			free_children(db, blkid, nblks, tx);
+			free_children(db, blkid, nblks, free_indirects, tx);
 			dbuf_rele(db, FTAG);
 		}
 	}
 
-	if (trunc) {
+	/*
+	 * Do not truncate the maxblkid if we are performing a raw
+	 * receive. The raw receive sets the mablkid manually and
+	 * must not be overriden.
+	 */
+	if (trunc && !dn->dn_objset->os_raw_receive) {
 		ASSERTV(uint64_t off);
 		dn->dn_phys->dn_maxblkid = blkid == 0 ? 0 : blkid - 1;
 
@@ -385,6 +404,7 @@ dnode_sync_free_range_impl(dnode_t *dn, uint64_t blkid, uint64_t nblks,
 typedef struct dnode_sync_free_range_arg {
 	dnode_t *dsfra_dnode;
 	dmu_tx_t *dsfra_tx;
+	boolean_t dsfra_free_indirects;
 } dnode_sync_free_range_arg_t;
 
 static void
@@ -394,7 +414,8 @@ dnode_sync_free_range(void *arg, uint64_t blkid, uint64_t nblks)
 	dnode_t *dn = dsfra->dsfra_dnode;
 
 	mutex_exit(&dn->dn_mtx);
-	dnode_sync_free_range_impl(dn, blkid, nblks, dsfra->dsfra_tx);
+	dnode_sync_free_range_impl(dn, blkid, nblks,
+	    dsfra->dsfra_free_indirects, dsfra->dsfra_tx);
 	mutex_enter(&dn->dn_mtx);
 }
 
@@ -420,14 +441,27 @@ dnode_evict_dbufs(dnode_t *dn)
 
 		mutex_enter(&db->db_mtx);
 		if (db->db_state != DB_EVICTING &&
-		    refcount_is_zero(&db->db_holds)) {
+		    zfs_refcount_is_zero(&db->db_holds)) {
 			db_marker->db_level = db->db_level;
 			db_marker->db_blkid = db->db_blkid;
 			db_marker->db_state = DB_SEARCH;
 			avl_insert_here(&dn->dn_dbufs, db_marker, db,
 			    AVL_BEFORE);
 
-			dbuf_clear(db);
+			/*
+			 * We need to use the "marker" dbuf rather than
+			 * simply getting the next dbuf, because
+			 * dbuf_destroy() may actually remove multiple dbufs.
+			 * It can call itself recursively on the parent dbuf,
+			 * which may also be removed from dn_dbufs.  The code
+			 * flow would look like:
+			 *
+			 * dbuf_destroy():
+			 *   dnode_rele_and_unlock(parent_dbuf, evicting=TRUE):
+			 *	if (!cacheable || pending_evict)
+			 *	  dbuf_destroy()
+			 */
+			dbuf_destroy(db);
 
 			db_next = AVL_NEXT(&dn->dn_dbufs, db_marker);
 			avl_remove(&dn->dn_dbufs, db_marker);
@@ -449,9 +483,9 @@ dnode_evict_bonus(dnode_t *dn)
 {
 	rw_enter(&dn->dn_struct_rwlock, RW_WRITER);
 	if (dn->dn_bonus != NULL) {
-		if (refcount_is_zero(&dn->dn_bonus->db_holds)) {
+		if (zfs_refcount_is_zero(&dn->dn_bonus->db_holds)) {
 			mutex_enter(&dn->dn_bonus->db_mtx);
-			dbuf_evict(dn->dn_bonus);
+			dbuf_destroy(dn->dn_bonus);
 			dn->dn_bonus = NULL;
 		} else {
 			dn->dn_bonus->db_pending_evict = TRUE;
@@ -487,7 +521,7 @@ dnode_undirty_dbufs(list_t *list)
 			list_destroy(&dr->dt.di.dr_children);
 		}
 		kmem_free(dr, sizeof (dbuf_dirty_record_t));
-		dbuf_rele_and_unlock(db, (void *)(uintptr_t)txg);
+		dbuf_rele_and_unlock(db, (void *)(uintptr_t)txg, B_FALSE);
 	}
 }
 
@@ -515,13 +549,14 @@ dnode_sync_free(dnode_t *dn, dmu_tx_t *tx)
 	 * zfs_obj_to_path() also depends on this being
 	 * commented out.
 	 *
-	 * ASSERT3U(refcount_count(&dn->dn_holds), ==, 1);
+	 * ASSERT3U(zfs_refcount_count(&dn->dn_holds), ==, 1);
 	 */
 
 	/* Undirty next bits */
 	dn->dn_next_nlevels[txgoff] = 0;
 	dn->dn_next_indblkshift[txgoff] = 0;
 	dn->dn_next_blksz[txgoff] = 0;
+	dn->dn_next_maxblkid[txgoff] = 0;
 
 	/* ASSERT(blkptrs are zero); */
 	ASSERT(dn->dn_phys->dn_type != DMU_OT_NONE);
@@ -530,7 +565,8 @@ dnode_sync_free(dnode_t *dn, dmu_tx_t *tx)
 	ASSERT(dn->dn_free_txg > 0);
 	if (dn->dn_allocated_txg != dn->dn_free_txg)
 		dmu_buf_will_dirty(&dn->dn_dbuf->db, tx);
-	bzero(dn->dn_phys, sizeof (dnode_phys_t));
+	bzero(dn->dn_phys, sizeof (dnode_phys_t) * dn->dn_num_slots);
+	dnode_free_interior_slots(dn);
 
 	mutex_enter(&dn->dn_mtx);
 	dn->dn_type = DMU_OT_NONE;
@@ -538,6 +574,7 @@ dnode_sync_free(dnode_t *dn, dmu_tx_t *tx)
 	dn->dn_allocated_txg = 0;
 	dn->dn_free_txg = 0;
 	dn->dn_have_spill = B_FALSE;
+	dn->dn_num_slots = 1;
 	mutex_exit(&dn->dn_mtx);
 
 	ASSERT(dn->dn_object != DMU_META_DNODE_OBJECT);
@@ -545,7 +582,7 @@ dnode_sync_free(dnode_t *dn, dmu_tx_t *tx)
 	dnode_rele(dn, (void *)(uintptr_t)tx->tx_txg);
 	/*
 	 * Now that we've released our hold, the dnode may
-	 * be evicted, so we musn't access it.
+	 * be evicted, so we mustn't access it.
 	 */
 }
 
@@ -555,33 +592,43 @@ dnode_sync_free(dnode_t *dn, dmu_tx_t *tx)
 void
 dnode_sync(dnode_t *dn, dmu_tx_t *tx)
 {
+	objset_t *os = dn->dn_objset;
 	dnode_phys_t *dnp = dn->dn_phys;
 	int txgoff = tx->tx_txg & TXG_MASK;
 	list_t *list = &dn->dn_dirty_records[txgoff];
-	boolean_t kill_spill = B_FALSE;
-	boolean_t freeing_dnode;
 	ASSERTV(static const dnode_phys_t zerodn = { 0 });
+	boolean_t kill_spill = B_FALSE;
 
 	ASSERT(dmu_tx_is_syncing(tx));
 	ASSERT(dnp->dn_type != DMU_OT_NONE || dn->dn_allocated_txg);
 	ASSERT(dnp->dn_type != DMU_OT_NONE ||
-	    bcmp(dnp, &zerodn, DNODE_SIZE) == 0);
+	    bcmp(dnp, &zerodn, DNODE_MIN_SIZE) == 0);
 	DNODE_VERIFY(dn);
 
 	ASSERT(dn->dn_dbuf == NULL || arc_released(dn->dn_dbuf->db_buf));
 
-	if (dmu_objset_userused_enabled(dn->dn_objset) &&
-	    !DMU_OBJECT_IS_SPECIAL(dn->dn_object)) {
+	/*
+	 * Do user accounting if it is enabled and this is not
+	 * an encrypted receive.
+	 */
+	if (dmu_objset_userused_enabled(os) &&
+	    !DMU_OBJECT_IS_SPECIAL(dn->dn_object) &&
+	    (!os->os_encrypted || !dmu_objset_is_receiving(os))) {
 		mutex_enter(&dn->dn_mtx);
 		dn->dn_oldused = DN_USED_BYTES(dn->dn_phys);
 		dn->dn_oldflags = dn->dn_phys->dn_flags;
 		dn->dn_phys->dn_flags |= DNODE_FLAG_USERUSED_ACCOUNTED;
+		if (dmu_objset_userobjused_enabled(dn->dn_objset))
+			dn->dn_phys->dn_flags |=
+			    DNODE_FLAG_USEROBJUSED_ACCOUNTED;
 		mutex_exit(&dn->dn_mtx);
 		dmu_objset_userquota_get_ids(dn, B_FALSE, tx);
 	} else {
-		/* Once we account for it, we should always account for it. */
+		/* Once we account for it, we should always account for it */
 		ASSERT(!(dn->dn_phys->dn_flags &
 		    DNODE_FLAG_USERUSED_ACCOUNTED));
+		ASSERT(!(dn->dn_phys->dn_flags &
+		    DNODE_FLAG_USEROBJUSED_ACCOUNTED));
 	}
 
 	mutex_enter(&dn->dn_mtx);
@@ -597,6 +644,9 @@ dnode_sync(dnode_t *dn, dmu_tx_t *tx)
 		dnp->dn_bonustype = dn->dn_bonustype;
 		dnp->dn_bonuslen = dn->dn_bonuslen;
 	}
+
+	dnp->dn_extra_slots = dn->dn_num_slots - 1;
+
 	ASSERT(dnp->dn_nlevels > 1 ||
 	    BP_IS_HOLE(&dnp->dn_blkptr[0]) ||
 	    BP_IS_EMBEDDED(&dnp->dn_blkptr[0]) ||
@@ -618,7 +668,7 @@ dnode_sync(dnode_t *dn, dmu_tx_t *tx)
 		    dn->dn_maxblkid == 0 || list_head(list) != NULL ||
 		    dn->dn_next_blksz[txgoff] >> SPA_MINBLOCKSHIFT ==
 		    dnp->dn_datablkszsec ||
-		    range_tree_space(dn->dn_free_ranges[txgoff]) != 0);
+		    !range_tree_is_empty(dn->dn_free_ranges[txgoff]));
 		dnp->dn_datablkszsec =
 		    dn->dn_next_blksz[txgoff] >> SPA_MINBLOCKSHIFT;
 		dn->dn_next_blksz[txgoff] = 0;
@@ -629,7 +679,8 @@ dnode_sync(dnode_t *dn, dmu_tx_t *tx)
 			dnp->dn_bonuslen = 0;
 		else
 			dnp->dn_bonuslen = dn->dn_next_bonuslen[txgoff];
-		ASSERT(dnp->dn_bonuslen <= DN_MAX_BONUSLEN);
+		ASSERT(dnp->dn_bonuslen <=
+		    DN_SLOTS_TO_BONUSLEN(dnp->dn_extra_slots + 1));
 		dn->dn_next_bonuslen[txgoff] = 0;
 	}
 
@@ -639,7 +690,8 @@ dnode_sync(dnode_t *dn, dmu_tx_t *tx)
 		dn->dn_next_bonustype[txgoff] = 0;
 	}
 
-	freeing_dnode = dn->dn_free_txg > 0 && dn->dn_free_txg <= tx->tx_txg;
+	boolean_t freeing_dnode = dn->dn_free_txg > 0 &&
+	    dn->dn_free_txg <= tx->tx_txg;
 
 	/*
 	 * Remove the spill block if we have been explicitly asked to
@@ -668,7 +720,7 @@ dnode_sync(dnode_t *dn, dmu_tx_t *tx)
 	mutex_exit(&dn->dn_mtx);
 
 	if (kill_spill) {
-		free_blocks(dn, &dn->dn_phys->dn_spill, 1, tx);
+		free_blocks(dn, DN_SPILL_BLKPTR(dn->dn_phys), 1, tx);
 		mutex_enter(&dn->dn_mtx);
 		dnp->dn_flags &= ~DNODE_FLAG_SPILL_BLKPTR;
 		mutex_exit(&dn->dn_mtx);
@@ -679,6 +731,11 @@ dnode_sync(dnode_t *dn, dmu_tx_t *tx)
 		dnode_sync_free_range_arg_t dsfra;
 		dsfra.dsfra_dnode = dn;
 		dsfra.dsfra_tx = tx;
+		dsfra.dsfra_free_indirects = freeing_dnode;
+		if (freeing_dnode) {
+			ASSERT(range_tree_contains(dn->dn_free_ranges[txgoff],
+			    0, dn->dn_maxblkid + 1));
+		}
 		mutex_enter(&dn->dn_mtx);
 		range_tree_vacate(dn->dn_free_ranges[txgoff],
 		    dnode_sync_free_range, &dsfra);
@@ -688,13 +745,33 @@ dnode_sync(dnode_t *dn, dmu_tx_t *tx)
 	}
 
 	if (freeing_dnode) {
+		dn->dn_objset->os_freed_dnodes++;
 		dnode_sync_free(dn, tx);
 		return;
+	}
+
+	if (dn->dn_num_slots > DNODE_MIN_SLOTS) {
+		dsl_dataset_t *ds = dn->dn_objset->os_dsl_dataset;
+		mutex_enter(&ds->ds_lock);
+		ds->ds_feature_activation[SPA_FEATURE_LARGE_DNODE] =
+		    (void *)B_TRUE;
+		mutex_exit(&ds->ds_lock);
 	}
 
 	if (dn->dn_next_nlevels[txgoff]) {
 		dnode_increase_indirection(dn, tx);
 		dn->dn_next_nlevels[txgoff] = 0;
+	}
+
+	/*
+	 * This must be done after dnode_sync_free_range()
+	 * and dnode_increase_indirection().
+	 */
+	if (dn->dn_next_maxblkid[txgoff]) {
+		mutex_enter(&dn->dn_mtx);
+		dnp->dn_maxblkid = dn->dn_next_maxblkid[txgoff];
+		dn->dn_next_maxblkid[txgoff] = 0;
+		mutex_exit(&dn->dn_mtx);
 	}
 
 	if (dn->dn_next_nblkptr[txgoff]) {

@@ -24,15 +24,15 @@
  * Use is subject to license terms.
  */
 
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
 #include <fcntl.h>
-#include <attr/xattr.h>
+#include <sys/xattr.h>
 #include <sys/stat.h>
 #include <sys/types.h>
-#include <sys/errno.h>
 #include <sys/param.h>
 
 #define	TYPE_D 'D'
@@ -137,8 +137,12 @@ mktree(char *pdir, int level)
 static char *
 getfdname(char *pdir, char type, int level, int dir, int file)
 {
-	(void) snprintf(fdname, sizeof (fdname),
-	    "%s/%c-l%dd%df%d", pdir, type, level, dir, file);
+	size_t size = sizeof (fdname);
+	if (snprintf(fdname, size, "%s/%c-l%dd%df%d", pdir, type, level, dir,
+	    file) >= size) {
+		(void) fprintf(stderr, "fdname truncated\n");
+		exit(EINVAL);
+	}
 	return (fdname);
 }
 
@@ -172,7 +176,7 @@ crtfile(char *pname)
 		exit(errno);
 	}
 
-	if (fsetxattr(fd, "xattr", pbuf, 1024, 0) < 0) {
+	if (fsetxattr(fd, "user.xattr", pbuf, 1024, 0) < 0) {
 		(void) fprintf(stderr, "fsetxattr(fd, \"xattr\", pbuf, "
 		    "1024, 0) failed.\n[%d]: %s.\n", errno, strerror(errno));
 		exit(errno);

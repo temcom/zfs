@@ -34,16 +34,7 @@
 
 verify_runnable "global"
 
-if ! $(is_physical_device $DISKS) ; then
-	log_unsupported "This directory cannot be run on raw files."
-fi
+log_must truncate -s $SIZE_SMALL $DISK_SMALL
+log_must truncate -s $SIZE_LARGE $DISK_LARGE
 
-DISK=${DISKS%% *}
-
-log_must set_partition 0 "" $SIZE $DISK
-
-if is_linux; then
-	default_setup $DISK"p1"
-else
-	default_setup $DISK"s0"
-fi
+log_pass

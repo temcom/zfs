@@ -1,7 +1,5 @@
 pkgdatadir = $(datadir)/@PACKAGE@/zfs-tests/tests/functional/cli_root/zfs_unmount
 dist_pkgdata_SCRIPTS = \
-	zfs_unmount.cfg \
-	zfs_unmount.kshlib \
 	setup.ksh \
 	cleanup.ksh \
 	zfs_unmount_001_pos.ksh \
@@ -13,4 +11,9 @@ dist_pkgdata_SCRIPTS = \
 	zfs_unmount_007_neg.ksh \
 	zfs_unmount_008_neg.ksh \
 	zfs_unmount_009_pos.ksh \
-	zfs_unmount_all_001_pos.ksh
+	zfs_unmount_all_001_pos.ksh \
+	zfs_unmount_nested.ksh
+
+dist_pkgdata_DATA = \
+	zfs_unmount.cfg \
+	zfs_unmount.kshlib

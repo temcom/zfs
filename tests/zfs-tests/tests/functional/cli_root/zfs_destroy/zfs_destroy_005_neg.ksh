@@ -26,7 +26,8 @@
 #
 
 #
-# Copyright (c) 2012 by Delphix. All rights reserved.
+# Copyright (c) 2012, 2016 by Delphix. All rights reserved.
+# Copyright (c) 2018 Datto Inc.
 #
 
 . $STF_SUITE/include/libtest.shlib
@@ -35,7 +36,7 @@
 
 #
 # DESCRIPTION:
-#	Seperately verify 'zfs destroy -f|-r|-rf|-R|-rR <dataset>' will fail in
+#	Separately verify 'zfs destroy -f|-r|-rf|-R|-rR <dataset>' will fail in
 #       different conditions.
 #
 # STRATEGY:
@@ -50,7 +51,7 @@
 
 verify_runnable "both"
 
-log_assert "Seperately verify 'zfs destroy -f|-r|-rf|-R|-rR <dataset>' will " \
+log_assert "Separately verify 'zfs destroy -f|-r|-rf|-R|-rR <dataset>' will " \
 	"fail in different conditions."
 log_onexit cleanup_testenv
 
@@ -76,7 +77,7 @@ function negative_test
 			fi
 		fi
 		for opt in $options; do
-			log_mustnot $ZFS destroy $opt $dtst
+			log_mustnot zfs destroy $opt $dtst
 		done
 	done
 }
@@ -101,30 +102,17 @@ negative_test "-r -rf" "$CTR $FS $VOL"
 # an explanation of what 'correct' means for this test.
 #
 mntpt=$(get_prop mountpoint $FS)
-pidlist=$($MKBUSY $mntpt/$TESTFILE0)
-log_note "$MKBUSY $mntpt/$TESTFILE0 (pidlist: $pidlist)"
+pidlist=$(mkbusy $mntpt/$TESTFILE0)
+log_note "mkbusy $mntpt/$TESTFILE0 (pidlist: $pidlist)"
 [[ -z $pidlist ]] && log_fail "Failure from mkbusy"
 negative_test "-R -rR" $CTR
 
-#
-# Checking the outcome of the test above is tricky, because the order in
-# which datasets are destroyed is not deterministic. Both $FS and $VOL are
-# busy, and the remaining datasets will be different depending on whether we
-# tried (and failed) to delete $FS or $VOL first.
-
-# The following datasets will exist independent of the order
+# The following busy datasets will still exist
 check_dataset datasetexists $CTR $FS $VOL
 
-if datasetexists $VOLSNAP && datasetnonexists $FSSNAP; then
-	# The recursive destroy failed on $FS
-	check_dataset datasetnonexists $FSSNAP $FSCLONE
-	check_dataset datasetexists $VOLSNAP $VOLCLONE
-elif datasetexists $FSSNAP && datasetnonexists $VOLSNAP; then
-	# The recursive destroy failed on $VOL
-	check_dataset datasetnonexists $VOLSNAP $VOLCLONE
-	check_dataset datasetexists $FSSNAP $FSCLONE
-else
-	log_must $ZFS list -rtall
+# The following datasets will not exist because of best-effort recursive destroy
+if datasetexists $VOLSNAP || datasetexists $FSSNAP; then
+	log_must zfs list -rtall
 	log_fail "Unexpected datasets remaining"
 fi
 
@@ -138,8 +126,8 @@ negative_test "-R -rR" $FS
 check_dataset datasetexists $CTR $FS $VOL $VOLSNAP $VOLCLONE
 check_dataset datasetnonexists $FSSNAP $FSCLONE
 
-log_must $KILL $pidlist
-log_mustnot $PGREP -fl $MKBUSY
+log_must kill $pidlist
+log_mustnot pgrep -fl mkbusy
 pidlist=""
 
 #
@@ -150,22 +138,16 @@ pidlist=""
 #
 if is_global_zone; then
 	setup_testenv clone
-	pidlist=$($MKBUSY $TESTDIR1/$TESTFILE0)
-	log_note "$MKBUSY $TESTDIR1/$TESTFILE0 (pidlist: $pidlist)"
+	pidlist=$(mkbusy $TESTDIR1/$TESTFILE0)
+	log_note "mkbusy $TESTDIR1/$TESTFILE0 (pidlist: $pidlist)"
 	[[ -z $pidlist ]] && log_fail "Failure from mkbusy"
 	negative_test "-R -rR" $CTR
 	check_dataset datasetexists $CTR $VOL
 	check_dataset datasetnonexists $VOLSNAP $VOLCLONE
 
-	# Here again, the non-determinism of destroy order is a factor. $FS,
-	# $FSSNAP and $FSCLONE will still exist here iff we attempted to destroy
-	# $VOL (and failed) first. So check that either all of the datasets are
-	# present, or they're all gone.
-	if datasetexists $FS; then
-		check_dataset datasetexists $FS $FSSNAP $FSCLONE
-	else
-		check_dataset datasetnonexists $FS $FSSNAP $FSCLONE
-	fi
+	# Due to recusive destroy being a best-effort operation,
+	# all of the non-busy datasets bellow should be gone now.
+	check_dataset datasetnonexists $FS $FSSNAP $FSCLONE
 fi
 
 #
@@ -181,31 +163,41 @@ if is_global_zone; then
 	check_dataset datasetnonexists $VOLSNAP $VOLCLONE
 fi
 
-log_must $KILL $pidlist
-log_mustnot $PGREP -fl $MKBUSY
+log_must kill $pidlist
+log_mustnot pgrep -fl mkbusy
 pidlist=""
 
 #
 # Create the clones for test environment and make the snapshot busy.
-# Then verify 'zfs destroy $snap' succeeds without '-f'.
 #
-# Then verify the snapshot and clone are destroyed, but nothing else is.
+# For Linux verify 'zfs destroy $snap' fails due to the busy mount point.  Then
+# verify the snapshot remains and the clone was destroyed, but nothing else is.
+#
+# Under illumos verify 'zfs destroy $snap' succeeds without '-f'.  Then verify
+# the snapshot and clone are destroyed, but nothing else is.
 #
 
 mntpt=$(snapshot_mountpoint $FSSNAP)
-pidlist=$($MKBUSY $mntpt)
-log_note "$MKBUSY $mntpt (pidlist: $pidlist)"
+pidlist=$(mkbusy $mntpt)
+log_note "mkbusy $mntpt (pidlist: $pidlist)"
 [[ -z $pidlist ]] && log_fail "Failure from mkbusy"
 
 for option in -R -rR ; do
 	setup_testenv clone
-	log_must $ZFS destroy $option $FSSNAP
-	check_dataset datasetexists $CTR $FS $VOL
-	check_dataset datasetnonexists $FSSNAP $FSCLONE
+
+	if is_linux; then
+		log_mustnot zfs destroy $option $FSSNAP
+		check_dataset datasetexists $CTR $FS $VOL $FSSNAP
+		check_dataset datasetnonexists $FSCLONE
+	else
+		log_must zfs destroy $option $FSSNAP
+		check_dataset datasetexists $CTR $FS $VOL
+		check_dataset datasetnonexists $FSSNAP $FSCLONE
+	fi
 done
 
-log_must $KILL $pidlist
-log_mustnot $PGREP -fl $MKBUSY
+log_must kill $pidlist
+log_mustnot pgrep -fl mkbusy
 pidlist=""
 
 log_pass "zfs destroy -f|-r|-rf|-R|-rR <dataset>' failed in different " \

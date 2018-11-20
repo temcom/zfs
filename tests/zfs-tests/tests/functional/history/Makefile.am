@@ -1,7 +1,5 @@
 pkgdatadir = $(datadir)/@PACKAGE@/zfs-tests/tests/functional/history
 dist_pkgdata_SCRIPTS = \
-	history.cfg \
-	history_common.kshlib \
 	cleanup.ksh \
 	setup.ksh \
 	history_001_pos.ksh \
@@ -15,8 +13,9 @@ dist_pkgdata_SCRIPTS = \
 	history_009_pos.ksh \
 	history_010_pos.ksh
 
-
-EXTRA_DIST = \
+dist_pkgdata_DATA = \
+	history.cfg \
+	history_common.kshlib \
 	i386.migratedpool.DAT.Z \
 	i386.orig_history.txt \
 	sparc.migratedpool.DAT.Z \

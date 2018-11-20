@@ -25,7 +25,7 @@
 # Use is subject to license terms.
 #
 #
-# Copyright (c) 2013 by Delphix. All rights reserved.
+# Copyright (c) 2013, 2016 by Delphix. All rights reserved.
 #
 
 . $STF_SUITE/include/libtest.shlib
@@ -33,17 +33,7 @@
 
 verify_runnable "global"
 
-DISK=${DISKS%% *}
-
-ismounted "$TESTPOOL/$TESTFS"
-(( $? == 0 )) && \
-        log_must $ZFS umount $TESTDIR
-
-destroy_pool $TESTPOOL
-#
-# Remove 100mb partition.
-#
-create_pool dummy$$ "$DISK"
-destroy_pool dummy$$
+default_cleanup_noexit
+log_must rm -f $DISK_SMALL $DISK_LARGE
 
 log_pass

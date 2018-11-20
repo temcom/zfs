@@ -39,6 +39,7 @@
 
 #include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
 
 #ifdef  __cplusplus
 extern "C" {
@@ -131,7 +132,8 @@ umem_free(void *ptr, size_t size)
 }
 
 static inline void
-umem_nofail_callback(umem_nofail_callback_t *cb) {}
+umem_nofail_callback(umem_nofail_callback_t *cb)
+{}
 
 static inline umem_cache_t *
 umem_cache_create(
@@ -145,7 +147,7 @@ umem_cache_create(
 
 	cp = umem_alloc(sizeof (umem_cache_t), UMEM_DEFAULT);
 	if (cp) {
-		strncpy(cp->cache_name, name, UMEM_CACHE_NAMELEN);
+		strlcpy(cp->cache_name, name, UMEM_CACHE_NAMELEN);
 		cp->cache_bufsize = bufsize;
 		cp->cache_align = align;
 		cp->cache_constructor = constructor;

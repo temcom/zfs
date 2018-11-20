@@ -6,4 +6,6 @@ dist_pkgdata_SCRIPTS = \
 	zfs_unshare_002_pos.ksh \
 	zfs_unshare_003_pos.ksh \
 	zfs_unshare_004_neg.ksh \
-	zfs_unshare_005_neg.ksh
+	zfs_unshare_005_neg.ksh \
+	zfs_unshare_006_pos.ksh \
+	zfs_unshare_007_pos.ksh

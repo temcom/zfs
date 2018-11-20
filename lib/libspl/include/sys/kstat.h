@@ -59,7 +59,7 @@ typedef int	kid_t;		/* unique kstat id */
  *	kcid = ioctl(kd, KSTAT_IOC_WRITE, kstat_t *);
  */
 
-#define	KSTAT_STRLEN	31	/* 30 chars + NULL; must be 16 * n - 1 */
+#define	KSTAT_STRLEN	255	/* 254 chars + NULL; must be 16 * n - 1 */
 
 /*
  * The generic kstat header
@@ -304,6 +304,8 @@ typedef struct kstat32 {
 #define	KSTAT_FLAG_PERSISTENT		0x08
 #define	KSTAT_FLAG_DORMANT		0x10
 #define	KSTAT_FLAG_INVALID		0x20
+#define	KSTAT_FLAG_LONGSTRINGS		0x40
+#define	KSTAT_FLAG_NO_HEADERS		0x80
 
 /*
  * Dynamic update support

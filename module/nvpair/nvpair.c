@@ -21,31 +21,26 @@
 
 /*
  * Copyright (c) 2000, 2010, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2015, 2017 by Delphix. All rights reserved.
  */
 
-#include <sys/stropts.h>
 #include <sys/debug.h>
 #include <sys/isa_defs.h>
-#include <sys/int_limits.h>
 #include <sys/nvpair.h>
 #include <sys/nvpair_impl.h>
-#include <rpc/types.h>
+#include <sys/types.h>
+#include <sys/strings.h>
 #include <rpc/xdr.h>
 
-#if defined(_KERNEL) && !defined(_BOOT)
-#include <sys/varargs.h>
-#include <sys/ddi.h>
+#if defined(_KERNEL)
 #include <sys/sunddi.h>
+#include <sys/sysmacros.h>
 #else
 #include <stdarg.h>
 #include <stdlib.h>
-#include <string.h>
-#include <strings.h>
+#include <stddef.h>
 #endif
 
-#ifndef	offsetof
-#define	offsetof(s, m)		((size_t)(&(((s *)0)->m)))
-#endif
 #define	skip_whitespace(p)	while ((*(p) == ' ') || (*(p) == '\t')) p++
 
 /*
@@ -138,6 +133,13 @@ static int nvlist_add_common(nvlist_t *nvl, const char *name, data_type_t type,
 #define	NVPAIR2I_NVP(nvp) \
 	((i_nvp_t *)((size_t)(nvp) - offsetof(i_nvp_t, nvi_nvp)))
 
+#ifdef _KERNEL
+int nvpair_max_recursion = 20;
+#else
+int nvpair_max_recursion = 100;
+#endif
+
+uint64_t nvlist_hashtable_init_size = (1 << 4);
 
 int
 nv_alloc_init(nv_alloc_t *nva, const nv_alloc_ops_t *nvo, /* args */ ...)
@@ -246,6 +248,291 @@ nv_priv_alloc_embedded(nvpriv_t *priv)
 	return (emb_priv);
 }
 
+static int
+nvt_tab_alloc(nvpriv_t *priv, uint64_t buckets)
+{
+	ASSERT3P(priv->nvp_hashtable, ==, NULL);
+	ASSERT0(priv->nvp_nbuckets);
+	ASSERT0(priv->nvp_nentries);
+
+	i_nvp_t **tab = nv_mem_zalloc(priv, buckets * sizeof (i_nvp_t *));
+	if (tab == NULL)
+		return (ENOMEM);
+
+	priv->nvp_hashtable = tab;
+	priv->nvp_nbuckets = buckets;
+	return (0);
+}
+
+static void
+nvt_tab_free(nvpriv_t *priv)
+{
+	i_nvp_t **tab = priv->nvp_hashtable;
+	if (tab == NULL) {
+		ASSERT0(priv->nvp_nbuckets);
+		ASSERT0(priv->nvp_nentries);
+		return;
+	}
+
+	nv_mem_free(priv, tab, priv->nvp_nbuckets * sizeof (i_nvp_t *));
+
+	priv->nvp_hashtable = NULL;
+	priv->nvp_nbuckets = 0;
+	priv->nvp_nentries = 0;
+}
+
+static uint32_t
+nvt_hash(const char *p)
+{
+	uint32_t g, hval = 0;
+
+	while (*p) {
+		hval = (hval << 4) + *p++;
+		if ((g = (hval & 0xf0000000)) != 0)
+			hval ^= g >> 24;
+		hval &= ~g;
+	}
+	return (hval);
+}
+
+static boolean_t
+nvt_nvpair_match(nvpair_t *nvp1, nvpair_t *nvp2, uint32_t nvflag)
+{
+	boolean_t match = B_FALSE;
+	if (nvflag & NV_UNIQUE_NAME_TYPE) {
+		if (strcmp(NVP_NAME(nvp1), NVP_NAME(nvp2)) == 0 &&
+		    NVP_TYPE(nvp1) == NVP_TYPE(nvp2))
+			match = B_TRUE;
+	} else {
+		ASSERT(nvflag == 0 || nvflag & NV_UNIQUE_NAME);
+		if (strcmp(NVP_NAME(nvp1), NVP_NAME(nvp2)) == 0)
+			match = B_TRUE;
+	}
+	return (match);
+}
+
+static nvpair_t *
+nvt_lookup_name_type(nvlist_t *nvl, const char *name, data_type_t type)
+{
+	nvpriv_t *priv = (nvpriv_t *)(uintptr_t)nvl->nvl_priv;
+	ASSERT(priv != NULL);
+
+	i_nvp_t **tab = priv->nvp_hashtable;
+
+	if (tab == NULL) {
+		ASSERT3P(priv->nvp_list, ==, NULL);
+		ASSERT0(priv->nvp_nbuckets);
+		ASSERT0(priv->nvp_nentries);
+		return (NULL);
+	} else {
+		ASSERT(priv->nvp_nbuckets != 0);
+	}
+
+	uint64_t hash = nvt_hash(name);
+	uint64_t index = hash & (priv->nvp_nbuckets - 1);
+
+	ASSERT3U(index, <, priv->nvp_nbuckets);
+	i_nvp_t *entry = tab[index];
+
+	for (i_nvp_t *e = entry; e != NULL; e = e->nvi_hashtable_next) {
+		if (strcmp(NVP_NAME(&e->nvi_nvp), name) == 0 &&
+		    (type == DATA_TYPE_DONTCARE ||
+		    NVP_TYPE(&e->nvi_nvp) == type))
+			return (&e->nvi_nvp);
+	}
+	return (NULL);
+}
+
+static nvpair_t *
+nvt_lookup_name(nvlist_t *nvl, const char *name)
+{
+	return (nvt_lookup_name_type(nvl, name, DATA_TYPE_DONTCARE));
+}
+
+static int
+nvt_resize(nvpriv_t *priv, uint32_t new_size)
+{
+	i_nvp_t **tab = priv->nvp_hashtable;
+
+	/*
+	 * Migrate all the entries from the current table
+	 * to a newly-allocated table with the new size by
+	 * re-adjusting the pointers of their entries.
+	 */
+	uint32_t size = priv->nvp_nbuckets;
+	uint32_t new_mask = new_size - 1;
+	ASSERT(ISP2(new_size));
+
+	i_nvp_t **new_tab = nv_mem_zalloc(priv, new_size * sizeof (i_nvp_t *));
+	if (new_tab == NULL)
+		return (ENOMEM);
+
+	uint32_t nentries = 0;
+	for (uint32_t i = 0; i < size; i++) {
+		i_nvp_t *next, *e = tab[i];
+
+		while (e != NULL) {
+			next = e->nvi_hashtable_next;
+
+			uint32_t hash = nvt_hash(NVP_NAME(&e->nvi_nvp));
+			uint32_t index = hash & new_mask;
+
+			e->nvi_hashtable_next = new_tab[index];
+			new_tab[index] = e;
+			nentries++;
+
+			e = next;
+		}
+		tab[i] = NULL;
+	}
+	ASSERT3U(nentries, ==, priv->nvp_nentries);
+
+	nvt_tab_free(priv);
+
+	priv->nvp_hashtable = new_tab;
+	priv->nvp_nbuckets = new_size;
+	priv->nvp_nentries = nentries;
+
+	return (0);
+}
+
+static boolean_t
+nvt_needs_togrow(nvpriv_t *priv)
+{
+	/*
+	 * Grow only when we have more elements than buckets
+	 * and the # of buckets doesn't overflow.
+	 */
+	return (priv->nvp_nentries > priv->nvp_nbuckets &&
+	    (UINT32_MAX >> 1) >= priv->nvp_nbuckets);
+}
+
+/*
+ * Allocate a new table that's twice the size of the old one,
+ * and migrate all the entries from the old one to the new
+ * one by re-adjusting their pointers.
+ */
+static int
+nvt_grow(nvpriv_t *priv)
+{
+	uint32_t current_size = priv->nvp_nbuckets;
+	/* ensure we won't overflow */
+	ASSERT3U(UINT32_MAX >> 1, >=, current_size);
+	return (nvt_resize(priv, current_size << 1));
+}
+
+static boolean_t
+nvt_needs_toshrink(nvpriv_t *priv)
+{
+	/*
+	 * Shrink only when the # of elements is less than or
+	 * equal to 1/4 the # of buckets. Never shrink less than
+	 * nvlist_hashtable_init_size.
+	 */
+	ASSERT3U(priv->nvp_nbuckets, >=, nvlist_hashtable_init_size);
+	if (priv->nvp_nbuckets == nvlist_hashtable_init_size)
+		return (B_FALSE);
+	return (priv->nvp_nentries <= (priv->nvp_nbuckets >> 2));
+}
+
+/*
+ * Allocate a new table that's half the size of the old one,
+ * and migrate all the entries from the old one to the new
+ * one by re-adjusting their pointers.
+ */
+static int
+nvt_shrink(nvpriv_t *priv)
+{
+	uint32_t current_size = priv->nvp_nbuckets;
+	/* ensure we won't overflow */
+	ASSERT3U(current_size, >=, nvlist_hashtable_init_size);
+	return (nvt_resize(priv, current_size >> 1));
+}
+
+static int
+nvt_remove_nvpair(nvlist_t *nvl, nvpair_t *nvp)
+{
+	nvpriv_t *priv = (nvpriv_t *)(uintptr_t)nvl->nvl_priv;
+
+	if (nvt_needs_toshrink(priv)) {
+		int err = nvt_shrink(priv);
+		if (err != 0)
+			return (err);
+	}
+	i_nvp_t **tab = priv->nvp_hashtable;
+
+	char *name = NVP_NAME(nvp);
+	uint64_t hash = nvt_hash(name);
+	uint64_t index = hash & (priv->nvp_nbuckets - 1);
+
+	ASSERT3U(index, <, priv->nvp_nbuckets);
+	i_nvp_t *bucket = tab[index];
+
+	for (i_nvp_t *prev = NULL, *e = bucket;
+	    e != NULL; prev = e, e = e->nvi_hashtable_next) {
+		if (nvt_nvpair_match(&e->nvi_nvp, nvp, nvl->nvl_flag)) {
+			if (prev != NULL) {
+				prev->nvi_hashtable_next =
+				    e->nvi_hashtable_next;
+			} else {
+				ASSERT3P(e, ==, bucket);
+				tab[index] = e->nvi_hashtable_next;
+			}
+			e->nvi_hashtable_next = NULL;
+			priv->nvp_nentries--;
+			break;
+		}
+	}
+
+	return (0);
+}
+
+static int
+nvt_add_nvpair(nvlist_t *nvl, nvpair_t *nvp)
+{
+	nvpriv_t *priv = (nvpriv_t *)(uintptr_t)nvl->nvl_priv;
+
+	/* initialize nvpair table now if it doesn't exist. */
+	if (priv->nvp_hashtable == NULL) {
+		int err = nvt_tab_alloc(priv, nvlist_hashtable_init_size);
+		if (err != 0)
+			return (err);
+	}
+
+	/*
+	 * if we don't allow duplicate entries, make sure to
+	 * unlink any existing entries from the table.
+	 */
+	if (nvl->nvl_nvflag != 0) {
+		int err = nvt_remove_nvpair(nvl, nvp);
+		if (err != 0)
+			return (err);
+	}
+
+	if (nvt_needs_togrow(priv)) {
+		int err = nvt_grow(priv);
+		if (err != 0)
+			return (err);
+	}
+	i_nvp_t **tab = priv->nvp_hashtable;
+
+	char *name = NVP_NAME(nvp);
+	uint64_t hash = nvt_hash(name);
+	uint64_t index = hash & (priv->nvp_nbuckets - 1);
+
+	ASSERT3U(index, <, priv->nvp_nbuckets);
+	i_nvp_t *bucket = tab[index];
+
+	/* insert link at the beginning of the bucket */
+	i_nvp_t *new_entry = NVPAIR2I_NVP(nvp);
+	ASSERT3P(new_entry->nvi_hashtable_next, ==, NULL);
+	new_entry->nvi_hashtable_next = bucket;
+	tab[index] = new_entry;
+
+	priv->nvp_nentries++;
+	return (0);
+}
+
 static void
 nvlist_init(nvlist_t *nvl, uint32_t nvflag, nvpriv_t *priv)
 {
@@ -265,7 +552,7 @@ nvlist_nvflag(nvlist_t *nvl)
 static nv_alloc_t *
 nvlist_nv_alloc(int kmflag)
 {
-#if defined(_KERNEL) && !defined(_BOOT)
+#if defined(_KERNEL)
 	switch (kmflag) {
 	case KM_SLEEP:
 		return (nv_alloc_sleep);
@@ -276,7 +563,7 @@ nvlist_nv_alloc(int kmflag)
 	}
 #else
 	return (nv_alloc_nosleep);
-#endif /* _KERNEL && !_BOOT */
+#endif /* _KERNEL */
 }
 
 /*
@@ -590,6 +877,7 @@ nvlist_free(nvlist_t *nvl)
 	else
 		nvl->nvl_priv = 0;
 
+	nvt_tab_free(priv);
 	nv_mem_free(priv, priv, sizeof (nvpriv_t));
 }
 
@@ -644,26 +932,14 @@ nvlist_xdup(nvlist_t *nvl, nvlist_t **nvlp, nv_alloc_t *nva)
 int
 nvlist_remove_all(nvlist_t *nvl, const char *name)
 {
-	nvpriv_t *priv;
-	i_nvp_t *curr;
 	int error = ENOENT;
 
-	if (nvl == NULL || name == NULL ||
-	    (priv = (nvpriv_t *)(uintptr_t)nvl->nvl_priv) == NULL)
+	if (nvl == NULL || name == NULL || nvl->nvl_priv == 0)
 		return (EINVAL);
 
-	curr = priv->nvp_list;
-	while (curr != NULL) {
-		nvpair_t *nvp = &curr->nvi_nvp;
-
-		curr = curr->nvi_next;
-		if (strcmp(name, NVP_NAME(nvp)) != 0)
-			continue;
-
-		nvp_buf_unlink(nvl, nvp);
-		nvpair_free(nvp);
-		nvp_buf_free(nvl, nvp);
-
+	nvpair_t *nvp;
+	while ((nvp = nvt_lookup_name(nvl, name)) != NULL) {
+		VERIFY0(nvlist_remove_nvpair(nvl, nvp));
 		error = 0;
 	}
 
@@ -676,28 +952,14 @@ nvlist_remove_all(nvlist_t *nvl, const char *name)
 int
 nvlist_remove(nvlist_t *nvl, const char *name, data_type_t type)
 {
-	nvpriv_t *priv;
-	i_nvp_t *curr;
-
-	if (nvl == NULL || name == NULL ||
-	    (priv = (nvpriv_t *)(uintptr_t)nvl->nvl_priv) == NULL)
+	if (nvl == NULL || name == NULL || nvl->nvl_priv == 0)
 		return (EINVAL);
 
-	curr = priv->nvp_list;
-	while (curr != NULL) {
-		nvpair_t *nvp = &curr->nvi_nvp;
+	nvpair_t *nvp = nvt_lookup_name_type(nvl, name, type);
+	if (nvp == NULL)
+		return (ENOENT);
 
-		if (strcmp(name, NVP_NAME(nvp)) == 0 && NVP_TYPE(nvp) == type) {
-			nvp_buf_unlink(nvl, nvp);
-			nvpair_free(nvp);
-			nvp_buf_free(nvl, nvp);
-
-			return (0);
-		}
-		curr = curr->nvi_next;
-	}
-
-	return (ENOENT);
+	return (nvlist_remove_nvpair(nvl, nvp));
 }
 
 int
@@ -705,6 +967,10 @@ nvlist_remove_nvpair(nvlist_t *nvl, nvpair_t *nvp)
 {
 	if (nvl == NULL || nvp == NULL)
 		return (EINVAL);
+
+	int err = nvt_remove_nvpair(nvl, nvp);
+	if (err != 0)
+		return (err);
 
 	nvp_buf_unlink(nvl, nvp);
 	nvpair_free(nvp);
@@ -910,6 +1176,8 @@ nvlist_add_common(nvlist_t *nvl, const char *name,
 
 	/* calculate sizes of the nvpair elements and the nvpair itself */
 	name_sz = strlen(name) + 1;
+	if (name_sz >= 1ULL << (sizeof (nvp->nvp_name_sz) * NBBY - 1))
+		return (EINVAL);
 
 	nvp_sz = NVP_SIZE_CALC(name_sz, value_sz);
 
@@ -981,6 +1249,12 @@ nvlist_add_common(nvlist_t *nvl, const char *name,
 	else if (nvl->nvl_nvflag & NV_UNIQUE_NAME_TYPE)
 		(void) nvlist_remove(nvl, name, type);
 
+	err = nvt_add_nvpair(nvl, nvp);
+	if (err != 0) {
+		nvpair_free(nvp);
+		nvp_buf_free(nvl, nvp);
+		return (err);
+	}
 	nvp_buf_link(nvl, nvp);
 
 	return (0);
@@ -1236,6 +1510,7 @@ nvpair_type_is_array(nvpair_t *nvp)
 	data_type_t type = NVP_TYPE(nvp);
 
 	if ((type == DATA_TYPE_BYTE_ARRAY) ||
+	    (type == DATA_TYPE_INT8_ARRAY) ||
 	    (type == DATA_TYPE_UINT8_ARRAY) ||
 	    (type == DATA_TYPE_INT16_ARRAY) ||
 	    (type == DATA_TYPE_UINT16_ARRAY) ||
@@ -1254,6 +1529,8 @@ nvpair_type_is_array(nvpair_t *nvp)
 static int
 nvpair_value_common(nvpair_t *nvp, data_type_t type, uint_t *nelem, void *data)
 {
+	int value_sz;
+
 	if (nvp == NULL || nvpair_type(nvp) != type)
 		return (EINVAL);
 
@@ -1283,8 +1560,9 @@ nvpair_value_common(nvpair_t *nvp, data_type_t type, uint_t *nelem, void *data)
 #endif
 		if (data == NULL)
 			return (EINVAL);
-		bcopy(NVP_VALUE(nvp), data,
-		    (size_t)i_get_value_size(type, NULL, 1));
+		if ((value_sz = i_get_value_size(type, NULL, 1)) < 0)
+			return (EINVAL);
+		bcopy(NVP_VALUE(nvp), data, (size_t)value_sz);
 		if (nelem != NULL)
 			*nelem = 1;
 		break;
@@ -1329,25 +1607,17 @@ static int
 nvlist_lookup_common(nvlist_t *nvl, const char *name, data_type_t type,
     uint_t *nelem, void *data)
 {
-	nvpriv_t *priv;
-	nvpair_t *nvp;
-	i_nvp_t *curr;
-
-	if (name == NULL || nvl == NULL ||
-	    (priv = (nvpriv_t *)(uintptr_t)nvl->nvl_priv) == NULL)
+	if (name == NULL || nvl == NULL || nvl->nvl_priv == 0)
 		return (EINVAL);
 
 	if (!(nvl->nvl_nvflag & (NV_UNIQUE_NAME | NV_UNIQUE_NAME_TYPE)))
 		return (ENOTSUP);
 
-	for (curr = priv->nvp_list; curr != NULL; curr = curr->nvi_next) {
-		nvp = &curr->nvi_nvp;
+	nvpair_t *nvp = nvt_lookup_name_type(nvl, name, type);
+	if (nvp == NULL)
+		return (ENOENT);
 
-		if (strcmp(name, NVP_NAME(nvp)) == 0 && NVP_TYPE(nvp) == type)
-			return (nvpair_value_common(nvp, type, nelem, data));
-	}
-
-	return (ENOENT);
+	return (nvpair_value_common(nvp, type, nelem, data));
 }
 
 int
@@ -1630,6 +1900,8 @@ nvlist_lookup_nvpair_ei_sep(nvlist_t *nvl, const char *name, const char sep,
 	if ((nvl == NULL) || (name == NULL))
 		return (EINVAL);
 
+	sepp = NULL;
+	idx = 0;
 	/* step through components of name */
 	for (np = name; np && *np; np = sepp) {
 		/* ensure unique names */
@@ -1667,7 +1939,7 @@ nvlist_lookup_nvpair_ei_sep(nvlist_t *nvl, const char *name, const char sep,
 			sepp = idxp;
 
 			/* determine the index value */
-#if defined(_KERNEL) && !defined(_BOOT)
+#if defined(_KERNEL)
 			if (ddi_strtol(idxp, &idxep, 0, &idx))
 				goto fail;
 #else
@@ -2017,12 +2289,13 @@ typedef struct {
 	const nvs_ops_t	*nvs_ops;
 	void		*nvs_private;
 	nvpriv_t	*nvs_priv;
+	int		nvs_recursion;
 } nvstream_t;
 
 /*
  * nvs operations are:
  *   - nvs_nvlist
- *     encoding / decoding of a nvlist header (nvlist_t)
+ *     encoding / decoding of an nvlist header (nvlist_t)
  *     calculates the size used for header and end detection
  *
  *   - nvs_nvpair
@@ -2102,6 +2375,12 @@ nvs_decode_pairs(nvstream_t *nvs, nvlist_t *nvl)
 			return (EFAULT);
 		}
 
+		err = nvt_add_nvpair(nvl, nvp);
+		if (err != 0) {
+			nvpair_free(nvp);
+			nvp_buf_free(nvl, nvp);
+			return (err);
+		}
 		nvp_buf_link(nvl, nvp);
 	}
 	return (err);
@@ -2168,9 +2447,16 @@ static int
 nvs_embedded(nvstream_t *nvs, nvlist_t *embedded)
 {
 	switch (nvs->nvs_op) {
-	case NVS_OP_ENCODE:
-		return (nvs_operation(nvs, embedded, NULL));
+	case NVS_OP_ENCODE: {
+		int err;
 
+		if (nvs->nvs_recursion >= nvpair_max_recursion)
+			return (EINVAL);
+		nvs->nvs_recursion++;
+		err = nvs_operation(nvs, embedded, NULL);
+		nvs->nvs_recursion--;
+		return (err);
+	}
 	case NVS_OP_DECODE: {
 		nvpriv_t *priv;
 		int err;
@@ -2183,8 +2469,14 @@ nvs_embedded(nvstream_t *nvs, nvlist_t *embedded)
 
 		nvlist_init(embedded, embedded->nvl_nvflag, priv);
 
+		if (nvs->nvs_recursion >= nvpair_max_recursion) {
+			nvlist_free(embedded);
+			return (EINVAL);
+		}
+		nvs->nvs_recursion++;
 		if ((err = nvs_operation(nvs, embedded, NULL)) != 0)
 			nvlist_free(embedded);
+		nvs->nvs_recursion--;
 		return (err);
 	}
 	default:
@@ -2272,6 +2564,7 @@ nvlist_common(nvlist_t *nvl, char *buf, size_t *buflen, int encoding,
 		return (EINVAL);
 
 	nvs.nvs_op = nvs_op;
+	nvs.nvs_recursion = 0;
 
 	/*
 	 * For NVS_OP_ENCODE and NVS_OP_DECODE make sure an nvlist and
@@ -2373,7 +2666,7 @@ nvlist_xpack(nvlist_t *nvl, char **bufp, size_t *buflen, int encoding,
 	 * 1. The nvlist has fixed allocator properties.
 	 *    All other nvlist routines (like nvlist_add_*, ...) use
 	 *    these properties.
-	 * 2. When using nvlist_pack() the user can specify his own
+	 * 2. When using nvlist_pack() the user can specify their own
 	 *    allocator properties (e.g. by using KM_NOSLEEP).
 	 *
 	 * We use the user specified properties (2). A clearer solution
@@ -2779,11 +3072,11 @@ nvs_native_nvpair(nvstream_t *nvs, nvpair_t *nvp, size_t *size)
 }
 
 static const nvs_ops_t nvs_native_ops = {
-	nvs_native_nvlist,
-	nvs_native_nvpair,
-	nvs_native_nvp_op,
-	nvs_native_nvp_size,
-	nvs_native_nvl_fini
+	.nvs_nvlist = nvs_native_nvlist,
+	.nvs_nvpair = nvs_native_nvpair,
+	.nvs_nvp_op = nvs_native_nvp_op,
+	.nvs_nvp_size = nvs_native_nvp_size,
+	.nvs_nvl_fini = nvs_native_nvl_fini
 };
 
 static int
@@ -3266,11 +3559,11 @@ nvs_xdr_nvpair(nvstream_t *nvs, nvpair_t *nvp, size_t *size)
 }
 
 static const struct nvs_ops nvs_xdr_ops = {
-	nvs_xdr_nvlist,
-	nvs_xdr_nvpair,
-	nvs_xdr_nvp_op,
-	nvs_xdr_nvp_size,
-	nvs_xdr_nvl_fini
+	.nvs_nvlist = nvs_xdr_nvlist,
+	.nvs_nvpair = nvs_xdr_nvpair,
+	.nvs_nvp_op = nvs_xdr_nvp_op,
+	.nvs_nvp_size = nvs_xdr_nvp_size,
+	.nvs_nvl_fini = nvs_xdr_nvl_fini
 };
 
 static int
@@ -3292,7 +3585,7 @@ nvs_xdr(nvstream_t *nvs, nvlist_t *nvl, char *buf, size_t *buflen)
 	return (err);
 }
 
-#if defined(_KERNEL) && defined(HAVE_SPL)
+#if defined(_KERNEL)
 static int __init
 nvpair_init(void)
 {

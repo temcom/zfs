@@ -1,6 +1,5 @@
 pkgdatadir = $(datadir)/@PACKAGE@/zfs-tests/tests/functional/cli_user/misc
 dist_pkgdata_SCRIPTS = \
-	misc.cfg \
 	setup.ksh \
 	cleanup.ksh \
 	zdb_001_neg.ksh \
@@ -43,4 +42,12 @@ dist_pkgdata_SCRIPTS = \
 	zpool_scrub_001_neg.ksh \
 	zpool_set_001_neg.ksh \
 	zpool_status_001_neg.ksh \
-	zpool_upgrade_001_neg.ksh
+	zpool_upgrade_001_neg.ksh \
+	arcstat_001_pos.ksh \
+	arc_summary_001_pos.ksh \
+	arc_summary_002_neg.ksh \
+	arc_summary3_001_pos.ksh \
+	dbufstat_001_pos.ksh
+
+dist_pkgdata_DATA = \
+	misc.cfg

@@ -20,7 +20,8 @@
  */
 /*
  * Copyright (c) 2005, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright (c) 2013 by Delphix. All rights reserved.
+ * Copyright (c) 2013, 2017 by Delphix. All rights reserved.
+ * Copyright 2016 Nexenta Systems, Inc.  All rights reserved.
  */
 
 #ifndef	_SYS_DSL_POOL_H
@@ -37,6 +38,8 @@
 #include <sys/bpobj.h>
 #include <sys/bptree.h>
 #include <sys/rrwlock.h>
+#include <sys/dsl_synctask.h>
+#include <sys/mmp.h>
 
 #ifdef	__cplusplus
 extern "C" {
@@ -50,10 +53,11 @@ struct dsl_dataset;
 struct dsl_pool;
 struct dmu_tx;
 struct dsl_scan;
+struct dsl_crypto_params;
 
 extern unsigned long zfs_dirty_data_max;
 extern unsigned long zfs_dirty_data_max_max;
-extern unsigned long zfs_dirty_data_sync;
+extern int zfs_dirty_data_sync_percent;
 extern int zfs_dirty_data_max_percent;
 extern int zfs_dirty_data_max_max_percent;
 extern int zfs_delay_min_dirty_percent;
@@ -77,6 +81,7 @@ typedef struct zfs_blkstat {
 
 typedef struct zfs_all_blkstats {
 	zfs_blkstat_t	zab_type[DN_MAX_LEVELS + 1][DMU_OT_TOTAL + 1];
+	kmutex_t	zab_lock;
 } zfs_all_blkstats_t;
 
 
@@ -98,6 +103,7 @@ typedef struct dsl_pool {
 	bpobj_t dp_free_bpobj;
 	uint64_t dp_bptree_obj;
 	uint64_t dp_empty_bpobj;
+	bpobj_t dp_obsolete_bpobj;
 
 	struct dsl_scan *dp_scan;
 
@@ -106,6 +112,7 @@ typedef struct dsl_pool {
 	kcondvar_t dp_spaceavail_cv;
 	uint64_t dp_dirty_pertxg[TXG_SIZE];
 	uint64_t dp_dirty_total;
+	uint64_t dp_long_free_dirty_pertxg[TXG_SIZE];
 	uint64_t dp_mos_used_delta;
 	uint64_t dp_mos_compressed_delta;
 	uint64_t dp_mos_uncompressed_delta;
@@ -122,6 +129,9 @@ typedef struct dsl_pool {
 	txg_list_t dp_dirty_zilogs;
 	txg_list_t dp_dirty_dirs;
 	txg_list_t dp_sync_tasks;
+	txg_list_t dp_early_sync_tasks;
+	taskq_t *dp_sync_taskq;
+	taskq_t *dp_zil_clean_taskq;
 
 	/*
 	 * Protects administrative changes (properties, namespace)
@@ -138,12 +148,14 @@ typedef struct dsl_pool {
 int dsl_pool_init(spa_t *spa, uint64_t txg, dsl_pool_t **dpp);
 int dsl_pool_open(dsl_pool_t *dp);
 void dsl_pool_close(dsl_pool_t *dp);
-dsl_pool_t *dsl_pool_create(spa_t *spa, nvlist_t *zplprops, uint64_t txg);
+dsl_pool_t *dsl_pool_create(spa_t *spa, nvlist_t *zplprops,
+    struct dsl_crypto_params *dcp, uint64_t txg);
 void dsl_pool_sync(dsl_pool_t *dp, uint64_t txg);
 void dsl_pool_sync_done(dsl_pool_t *dp, uint64_t txg);
 int dsl_pool_sync_context(dsl_pool_t *dp);
-uint64_t dsl_pool_adjustedsize(dsl_pool_t *dp, boolean_t netfree);
-uint64_t dsl_pool_adjustedfree(dsl_pool_t *dp, boolean_t netfree);
+uint64_t dsl_pool_adjustedsize(dsl_pool_t *dp, zfs_space_check_t slop_policy);
+uint64_t dsl_pool_unreserved_space(dsl_pool_t *dp,
+    zfs_space_check_t slop_policy);
 void dsl_pool_dirty_space(dsl_pool_t *dp, int64_t space, dmu_tx_t *tx);
 void dsl_pool_undirty_space(dsl_pool_t *dp, int64_t space, uint64_t txg);
 void dsl_free(dsl_pool_t *dp, uint64_t txg, const blkptr_t *bpp);
@@ -153,6 +165,8 @@ void dsl_pool_create_origin(dsl_pool_t *dp, dmu_tx_t *tx);
 void dsl_pool_upgrade_clones(dsl_pool_t *dp, dmu_tx_t *tx);
 void dsl_pool_upgrade_dir_clones(dsl_pool_t *dp, dmu_tx_t *tx);
 void dsl_pool_mos_diduse_space(dsl_pool_t *dp,
+    int64_t used, int64_t comp, int64_t uncomp);
+void dsl_pool_ckpoint_diduse_space(dsl_pool_t *dp,
     int64_t used, int64_t comp, int64_t uncomp);
 boolean_t dsl_pool_need_dirty_delay(dsl_pool_t *dp);
 void dsl_pool_config_enter(dsl_pool_t *dp, void *tag);
@@ -171,6 +185,9 @@ void dsl_pool_clean_tmp_userrefs(dsl_pool_t *dp);
 int dsl_pool_open_special_dir(dsl_pool_t *dp, const char *name, dsl_dir_t **);
 int dsl_pool_hold(const char *name, void *tag, dsl_pool_t **dp);
 void dsl_pool_rele(dsl_pool_t *dp, void *tag);
+
+void dsl_pool_create_obsolete_bpobj(dsl_pool_t *dp, dmu_tx_t *tx);
+void dsl_pool_destroy_obsolete_bpobj(dsl_pool_t *dp, dmu_tx_t *tx);
 
 #ifdef	__cplusplus
 }

@@ -40,6 +40,7 @@
 #define	_SYS_XVATTR_H
 
 #include <sys/vnode.h>
+#include <sys/strings.h>
 
 #define	AV_SCANSTAMP_SZ	32		/* length of anti-virus scanstamp */
 
@@ -47,7 +48,7 @@
  * Structure of all optional attributes.
  */
 typedef struct xoptattr {
-	timestruc_t	xoa_createtime;	/* Create time of file */
+	inode_timespec_t xoa_createtime;	/* Create time of file */
 	uint8_t		xoa_archive;
 	uint8_t		xoa_system;
 	uint8_t		xoa_readonly;
@@ -64,6 +65,8 @@ typedef struct xoptattr {
 	uint64_t	xoa_generation;
 	uint8_t		xoa_offline;
 	uint8_t		xoa_sparse;
+	uint8_t		xoa_projinherit;
+	uint64_t	xoa_projid;
 } xoptattr_t;
 
 /*
@@ -73,7 +76,7 @@ typedef struct xoptattr {
  * - a 32 bit quantity (xva_mapsize) that specifies the size of the
  *   attribute bitmaps in 32 bit words.
  * - A pointer to the returned attribute bitmap (needed because the
- *   previous element, the requested attribute bitmap) is variable lenth.
+ *   previous element, the requested attribute bitmap) is variable length.
  * - The requested attribute bitmap, which is an array of 32 bit words.
  *   Callers use the XVA_SET_REQ() macro to set the bits corresponding to
  *   the attributes that are being requested.
@@ -97,7 +100,7 @@ typedef struct xoptattr {
  * attributes to be requested/returned.  File systems may or may not support
  * optional attributes.  They do so at their own discretion but if they do
  * support optional attributes, they must register the VFSFT_XVATTR feature
- * so that the optional attributes can be set/retrived.
+ * so that the optional attributes can be set/retrieved.
  *
  * The fields of the xvattr structure are:
  *
@@ -169,11 +172,14 @@ typedef struct xvattr {
 #define	XAT0_GEN	0x00004000	/* object generation number */
 #define	XAT0_OFFLINE	0x00008000	/* offline */
 #define	XAT0_SPARSE	0x00010000	/* sparse */
+#define	XAT0_PROJINHERIT	0x00020000	/* Create with parent projid */
+#define	XAT0_PROJID	0x00040000	/* Project ID */
 
 #define	XAT0_ALL_ATTRS	(XAT0_CREATETIME|XAT0_ARCHIVE|XAT0_SYSTEM| \
     XAT0_READONLY|XAT0_HIDDEN|XAT0_NOUNLINK|XAT0_IMMUTABLE|XAT0_APPENDONLY| \
     XAT0_NODUMP|XAT0_OPAQUE|XAT0_AV_QUARANTINED|  XAT0_AV_MODIFIED| \
-    XAT0_AV_SCANSTAMP|XAT0_REPARSE|XATO_GEN|XAT0_OFFLINE|XAT0_SPARSE)
+    XAT0_AV_SCANSTAMP|XAT0_REPARSE|XATO_GEN|XAT0_OFFLINE|XAT0_SPARSE| \
+    XAT0_PROJINHERIT | XAT0_PROJID)
 
 /* Support for XAT_* optional attributes */
 #define	XVA_MASK		0xffffffff	/* Used to mask off 32 bits */
@@ -210,6 +216,8 @@ typedef struct xvattr {
 #define	XAT_GEN			((XAT0_INDEX << XVA_SHFT) | XAT0_GEN)
 #define	XAT_OFFLINE		((XAT0_INDEX << XVA_SHFT) | XAT0_OFFLINE)
 #define	XAT_SPARSE		((XAT0_INDEX << XVA_SHFT) | XAT0_SPARSE)
+#define	XAT_PROJINHERIT		((XAT0_INDEX << XVA_SHFT) | XAT0_PROJINHERIT)
+#define	XAT_PROJID		((XAT0_INDEX << XVA_SHFT) | XAT0_PROJID)
 
 /*
  * The returned attribute map array (xva_rtnattrmap[]) is located past the
@@ -225,7 +233,7 @@ typedef struct xvattr {
  * of requested attributes (xva_reqattrmap[]).
  */
 #define	XVA_SET_REQ(xvap, attr)					\
-	ASSERT((xvap)->xva_vattr.va_mask | AT_XVATTR);		\
+	ASSERT((xvap)->xva_vattr.va_mask & AT_XVATTR);		\
 	ASSERT((xvap)->xva_magic == XVA_MAGIC);			\
 	(xvap)->xva_reqattrmap[XVA_INDEX(attr)] |= XVA_ATTRBIT(attr)
 /*
@@ -233,7 +241,7 @@ typedef struct xvattr {
  * of requested attributes (xva_reqattrmap[]).
  */
 #define	XVA_CLR_REQ(xvap, attr)					\
-	ASSERT((xvap)->xva_vattr.va_mask | AT_XVATTR);		\
+	ASSERT((xvap)->xva_vattr.va_mask & AT_XVATTR);		\
 	ASSERT((xvap)->xva_magic == XVA_MAGIC);			\
 	(xvap)->xva_reqattrmap[XVA_INDEX(attr)] &= ~XVA_ATTRBIT(attr)
 
@@ -242,7 +250,7 @@ typedef struct xvattr {
  * of returned attributes (xva_rtnattrmap[]).
  */
 #define	XVA_SET_RTN(xvap, attr)					\
-	ASSERT((xvap)->xva_vattr.va_mask | AT_XVATTR);		\
+	ASSERT((xvap)->xva_vattr.va_mask & AT_XVATTR);		\
 	ASSERT((xvap)->xva_magic == XVA_MAGIC);			\
 	(XVA_RTNATTRMAP(xvap))[XVA_INDEX(attr)] |= XVA_ATTRBIT(attr)
 
@@ -251,7 +259,7 @@ typedef struct xvattr {
  * to see of the corresponding attribute bit is set.  If so, returns non-zero.
  */
 #define	XVA_ISSET_REQ(xvap, attr)					\
-	((((xvap)->xva_vattr.va_mask | AT_XVATTR) &&			\
+	((((xvap)->xva_vattr.va_mask & AT_XVATTR) &&			\
 		((xvap)->xva_magic == XVA_MAGIC) &&			\
 		((xvap)->xva_mapsize > XVA_INDEX(attr))) ?		\
 	((xvap)->xva_reqattrmap[XVA_INDEX(attr)] & XVA_ATTRBIT(attr)) :	0)
@@ -261,7 +269,7 @@ typedef struct xvattr {
  * to see of the corresponding attribute bit is set.  If so, returns non-zero.
  */
 #define	XVA_ISSET_RTN(xvap, attr)					\
-	((((xvap)->xva_vattr.va_mask | AT_XVATTR) &&			\
+	((((xvap)->xva_vattr.va_mask & AT_XVATTR) &&			\
 		((xvap)->xva_magic == XVA_MAGIC) &&			\
 		((xvap)->xva_mapsize > XVA_INDEX(attr))) ?		\
 	((XVA_RTNATTRMAP(xvap))[XVA_INDEX(attr)] & XVA_ATTRBIT(attr)) : 0)
