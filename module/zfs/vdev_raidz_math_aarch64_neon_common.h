@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: CDDL-1.0
 /*
  * CDDL HEADER START
  *
@@ -6,7 +7,7 @@
  * You may not use this file except in compliance with the License.
  *
  * You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
- * or http://www.opensolaris.org/os/licensing.
+ * or https://opensource.org/licenses/CDDL-1.0.
  * See the License for the specific language governing permissions
  * and limitations under the License.
  *
@@ -23,9 +24,11 @@
  */
 
 #include <sys/types.h>
-#include <linux/simd_aarch64.h>
+#include <sys/simd.h>
 
+#ifdef __linux__
 #define	__asm __asm__ __volatile__
+#endif
 
 #define	_REG_CNT(_0, _1, _2, _3, _4, _5, _6, _7, N, ...) N
 #define	REG_CNT(r...) _REG_CNT(r, 8, 7, 6, 5, 4, 3, 2, 1)
@@ -42,7 +45,7 @@
 /*
  * Here we need registers not used otherwise.
  * They will be used in unused ASM for the case
- * with more registers than required... but GGC
+ * with more registers than required... but GCC
  * will still need to make sure the constraints
  * are correct, and duplicate constraints are illegal
  * ... and we use the "register" number as a name
@@ -123,7 +126,7 @@
 #define	_R_23(_0, _1, REG2, REG3, ...) REG2, REG3
 #define	R_23(REG...) _R_23(REG, 1, 2, 3)
 
-#define	ASM_BUG()	ASSERT(0)
+#define	ZFS_ASM_BUG()	ASSERT(0)
 
 #define	OFFSET(ptr, val)	(((unsigned char *)(ptr))+val)
 
@@ -197,7 +200,7 @@ typedef struct v {
 		:	"v20", "v21");					\
 		break;							\
 	default:							\
-		ASM_BUG();						\
+		ZFS_ASM_BUG();						\
 	}								\
 }
 
@@ -221,7 +224,7 @@ typedef struct v {
 		:	RVR0(r), RVR1(r));				\
 		break;							\
 	default:							\
-		ASM_BUG();						\
+		ZFS_ASM_BUG();						\
 	}								\
 }
 
@@ -256,7 +259,7 @@ typedef struct v {
 		:	WVR0(r), WVR1(r));				\
 		break;							\
 	default:							\
-		ASM_BUG();						\
+		ZFS_ASM_BUG();						\
 	}								\
 }
 
@@ -280,7 +283,7 @@ typedef struct v {
 		:	RVR0(r), RVR1(r));				\
 		break;							\
 	default:							\
-		ASM_BUG();						\
+		ZFS_ASM_BUG();						\
 	}								\
 }
 
@@ -329,7 +332,7 @@ typedef struct v {
 		[SRC1] "Q" (*(OFFSET(src, 16))));			\
 		break;							\
 	default:							\
-		ASM_BUG();						\
+		ZFS_ASM_BUG();						\
 	}								\
 }
 
@@ -378,7 +381,7 @@ typedef struct v {
 		:	RVR0(r), RVR1(r));				\
 		break;							\
 	default:							\
-		ASM_BUG();						\
+		ZFS_ASM_BUG();						\
 	}								\
 }
 
@@ -441,7 +444,7 @@ typedef struct v {
 		:	"v18", "v19");					\
 		break;							\
 	default:							\
-		ASM_BUG();						\
+		ZFS_ASM_BUG();						\
 	}								\
 }
 
@@ -479,10 +482,8 @@ typedef struct v {
 		/* upper part */					\
 		"and v14.16b," VR0(r) ".16b,v15.16b\n"			\
 		"and v13.16b," VR1(r) ".16b,v15.16b\n"			\
-		"sshr " VR0(r) ".8h," VR0(r) ".8h,#4\n"			\
-		"sshr " VR1(r) ".8h," VR1(r) ".8h,#4\n"			\
-		"and " VR0(r) ".16b," VR0(r) ".16b,v15.16b\n"		\
-		"and " VR1(r) ".16b," VR1(r) ".16b,v15.16b\n"		\
+		"ushr " VR0(r) ".16b," VR0(r) ".16b,#4\n"		\
+		"ushr " VR1(r) ".16b," VR1(r) ".16b,#4\n"		\
 									\
 		"tbl v12.16b,{v10.16b}," VR0(r) ".16b\n"		\
 		"tbl v10.16b,{v10.16b}," VR1(r) ".16b\n"		\
@@ -512,7 +513,7 @@ typedef struct v {
 		:	"v10", "v11", "v12", "v13", "v14", "v15");	\
 		break;							\
 	default:							\
-		ASM_BUG();						\
+		ZFS_ASM_BUG();						\
 	}								\
 }
 
@@ -527,7 +528,7 @@ typedef struct v {
 		_MULx2(c, R_01(r));					\
 		break;							\
 	default:							\
-		ASM_BUG();						\
+		ZFS_ASM_BUG();						\
 	}								\
 }
 

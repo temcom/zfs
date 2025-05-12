@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: CDDL-1.0
 /*
  * CDDL HEADER START
  *
@@ -6,7 +7,7 @@
  * You may not use this file except in compliance with the License.
  *
  * You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
- * or http://www.opensolaris.org/os/licensing.
+ * or https://opensource.org/licenses/CDDL-1.0.
  * See the License for the specific language governing permissions
  * and limitations under the License.
  *
@@ -28,7 +29,7 @@
 
 #include <sys/spa.h>
 
-static const char *raidz_impl_names[] = {
+static const char *const raidz_impl_names[] = {
 	"original",
 	"scalar",
 	"sse2",
@@ -38,18 +39,27 @@ static const char *raidz_impl_names[] = {
 	"avx512bw",
 	"aarch64_neon",
 	"aarch64_neonx2",
+	"powerpc_altivec",
 	NULL
+};
+
+enum raidz_verbosity {
+	D_ALL,
+	D_INFO,
+	D_DEBUG,
 };
 
 typedef struct raidz_test_opts {
 	size_t rto_ashift;
-	size_t rto_offset;
+	uint64_t rto_offset;
 	size_t rto_dcols;
 	size_t rto_dsize;
-	size_t rto_v;
+	enum raidz_verbosity rto_v;
 	size_t rto_sweep;
 	size_t rto_sweep_timeout;
 	size_t rto_benchmark;
+	size_t rto_expand;
+	uint64_t rto_expand_offset;
 	size_t rto_sanity;
 	size_t rto_gdb;
 
@@ -65,9 +75,11 @@ static const raidz_test_opts_t rto_opts_defaults = {
 	.rto_offset = 1ULL << 0,
 	.rto_dcols = 8,
 	.rto_dsize = 1<<19,
-	.rto_v = 0,
+	.rto_v = D_ALL,
 	.rto_sweep = 0,
 	.rto_benchmark = 0,
+	.rto_expand = 0,
+	.rto_expand_offset = -1ULL,
 	.rto_sanity = 0,
 	.rto_gdb = 0,
 	.rto_should_stop = B_FALSE
@@ -81,23 +93,19 @@ static inline size_t ilog2(size_t a)
 }
 
 
-#define	D_ALL	0
-#define	D_INFO	1
-#define	D_DEBUG	2
-
-#define	LOG(lvl, a...)				\
+#define	LOG(lvl, ...)				\
 {						\
 	if (rto_opts.rto_v >= lvl)		\
-		(void) fprintf(stdout, a);	\
+		(void) fprintf(stdout, __VA_ARGS__);	\
 }						\
 
-#define	LOG_OPT(lvl, opt, a...)			\
+#define	LOG_OPT(lvl, opt, ...)			\
 {						\
 	if (opt->rto_v >= lvl)			\
-		(void) fprintf(stdout, a);	\
+		(void) fprintf(stdout, __VA_ARGS__);	\
 }						\
 
-#define	ERR(a...)	(void) fprintf(stderr, a)
+#define	ERR(...)	(void) fprintf(stderr, __VA_ARGS__)
 
 
 #define	DBLSEP "================\n"

@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -7,7 +8,7 @@
 # You may not use this file except in compliance with the License.
 #
 # You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
+# or https://opensource.org/licenses/CDDL-1.0.
 # See the License for the specific language governing permissions
 # and limitations under the License.
 #
@@ -33,7 +34,7 @@
 . $STF_SUITE/include/libtest.shlib
 . $STF_SUITE/tests/functional/delegate/delegate_common.kshlib
 
-if ! is_linux; then
+if is_illumos; then
 	# check svc:/network/nis/client:default state
 	# disable it if the state is ON
 	# and the state will be restored during cleanup.ksh
@@ -42,6 +43,11 @@ if ! is_linux; then
 		log_must svcadm disable -t svc:/network/nis/client:default
 		log_must touch $NISSTAFILE
 	fi
+fi
+
+if is_freebsd; then
+	# To pass user mount tests
+	log_must sysctl vfs.usermount=1
 fi
 
 cleanup_user_group
@@ -63,15 +69,13 @@ log_must add_user $OTHER_GROUP $OTHER2
 #
 # chmod 0750 $HOME
 #
-user_run $STAFF1 zfs list
-if [ $? -ne 0 ]; then
+user_run $STAFF1 zfs list ||
 	log_unsupported "Test user $STAFF1 cannot execute zfs utilities"
-fi
 
 DISK=${DISKS%% *}
 
 if is_linux; then
-	log_must set_tunable64 zfs_admin_snapshot 1
+	log_must set_tunable64 ADMIN_SNAPSHOT 1
 fi
 
 default_volume_setup $DISK

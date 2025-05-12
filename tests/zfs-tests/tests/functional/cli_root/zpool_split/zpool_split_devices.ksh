@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # This file and its contents are supplied under the terms of the
 # Common Development and Distribution License ("CDDL"), version 1.0.
@@ -15,6 +16,7 @@
 #
 
 . $STF_SUITE/include/libtest.shlib
+. $STF_SUITE/tests/functional/cli_root/zpool_split/zpool_split.cfg
 
 #
 # DESCRIPTION:
@@ -32,7 +34,7 @@ function cleanup
 {
 	destroy_pool $TESTPOOL
 	destroy_pool $TESTPOOL2
-	rm -f $FILEDEV_PREFIX*
+	rm -fd $FILEDEV_PREFIX* $altroot
 }
 
 function setup_mirror # <conf>
@@ -91,7 +93,7 @@ do
 	# Verify "good" devices ended up in the new pool
 	log_must poolexists $TESTPOOL2
 	for filedev in ${gooddevs[$i]}; do
-		log_must check_vdev_state $TESTPOOL2 $filedev ""
+		log_must check_vdev_state $TESTPOOL2 $filedev "ONLINE"
 	done
 	cleanup
 	((i = i + 1))

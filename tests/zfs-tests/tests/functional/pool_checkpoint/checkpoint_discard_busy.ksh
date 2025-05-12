@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 
 #
 # This file and its contents are supplied under the terms of the
@@ -38,10 +39,12 @@
 
 verify_runnable "global"
 
+log_unsupported "Skipping, issue https://github.com/openzfs/zfs/issues/12053"
+
 function test_cleanup
 {
-	# reset memory limit to 16M
-	set_tunable64 zfs_spa_discard_memory_limit 1000000
+	# reset to original value
+	log_must restore_tunable SPA_DISCARD_MEMORY_LIMIT
 	cleanup_nested_pools
 }
 
@@ -67,7 +70,8 @@ log_onexit test_cleanup
 #	map, we should have even more time to
 #	verify this.
 #
-set_tunable64 zfs_spa_discard_memory_limit 128
+log_must save_tunable SPA_DISCARD_MEMORY_LIMIT
+set_tunable64 SPA_DISCARD_MEMORY_LIMIT 128
 
 log_must zpool checkpoint $NESTEDPOOL
 
@@ -99,12 +103,13 @@ log_mustnot zpool checkpoint -d $NESTEDPOOL
 log_mustnot zpool remove $NESTEDPOOL $FILEDISK1
 log_mustnot zpool reguid $NESTEDPOOL
 
-# reset memory limit to 16M
-set_tunable64 zfs_spa_discard_memory_limit 16777216
+# reset to original value
+log_must restore_tunable SPA_DISCARD_MEMORY_LIMIT
 
 nested_wait_discard_finish
 
-log_must zdb $NESTEDPOOL
+log_must zpool export $NESTEDPOOL
+log_must zdb -e -p $FILEDISKDIR $NESTEDPOOL
 
 log_pass "Can export/import but not rewind/checkpoint/discard or " \
     "change pool's config while discarding."

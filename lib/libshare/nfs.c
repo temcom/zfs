@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: CDDL-1.0
 /*
  * CDDL HEADER START
  *
@@ -6,7 +7,7 @@
  * You may not use this file except in compliance with the License.
  *
  * You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
- * or http://www.opensolaris.org/os/licensing.
+ * or https://opensource.org/licenses/CDDL-1.0.
  * See the License for the specific language governing permissions
  * and limitations under the License.
  *
@@ -19,728 +20,299 @@
  * CDDL HEADER END
  */
 
-/*
- * Copyright (c) 2002, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright (c) 2011 Gunnar Beutner
- * Copyright (c) 2012 Cyril Plisko. All rights reserved.
- */
 
-#include <stdio.h>
-#include <string.h>
-#include <strings.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <sys/file.h>
 #include <fcntl.h>
+#include <ctype.h>
+#include <stdio.h>
 #include <errno.h>
-#include <sys/wait.h>
-#include <unistd.h>
-#include <libzfs.h>
 #include <libshare.h>
-#include "libshare_impl.h"
+#include <unistd.h>
+#include <libzutil.h>
+#include "nfs.h"
 
-static boolean_t nfs_available(void);
-
-static sa_fstype_t *nfs_fstype;
-
-/*
- * nfs_exportfs_temp_fd refers to a temporary copy of the output
- * from exportfs -v.
- */
-static int nfs_exportfs_temp_fd = -1;
-
-typedef int (*nfs_shareopt_callback_t)(const char *opt, const char *value,
-    void *cookie);
-
-typedef int (*nfs_host_callback_t)(const char *sharepath, const char *host,
-    const char *security, const char *access, void *cookie);
 
 /*
- * Invokes the specified callback function for each Solaris share option
- * listed in the specified string.
+ * nfs_exports_[lock|unlock] are used to guard against conconcurrent
+ * updates to the exports file. Each protocol is responsible for
+ * providing the necessary locking to ensure consistency.
  */
 static int
-foreach_nfs_shareopt(const char *shareopts,
-    nfs_shareopt_callback_t callback, void *cookie)
+nfs_exports_lock(const char *name, int *nfs_lock_fd)
 {
-	char *shareopts_dup, *opt, *cur, *value;
-	int was_nul, rc;
+	int err;
 
-	if (shareopts == NULL)
-		return (SA_OK);
-
-	shareopts_dup = strdup(shareopts);
-
-	if (shareopts_dup == NULL)
-		return (SA_NO_MEMORY);
-
-	opt = shareopts_dup;
-	was_nul = 0;
-
-	while (1) {
-		cur = opt;
-
-		while (*cur != ',' && *cur != '\0')
-			cur++;
-
-		if (*cur == '\0')
-			was_nul = 1;
-
-		*cur = '\0';
-
-		if (cur > opt) {
-			value = strchr(opt, '=');
-
-			if (value != NULL) {
-				*value = '\0';
-				value++;
-			}
-
-			rc = callback(opt, value, cookie);
-
-			if (rc != SA_OK) {
-				free(shareopts_dup);
-				return (rc);
-			}
-		}
-
-		opt = cur + 1;
-
-		if (was_nul)
-			break;
+	*nfs_lock_fd = open(name, O_RDWR | O_CREAT | O_CLOEXEC, 0600);
+	if (*nfs_lock_fd == -1) {
+		err = errno;
+		fprintf(stderr, "failed to lock %s: %s\n", name,
+		    zfs_strerror(err));
+		return (err);
 	}
 
-	free(shareopts_dup);
+	while ((err = flock(*nfs_lock_fd, LOCK_EX)) != 0 && errno == EINTR)
+		;
+	if (err != 0) {
+		err = errno;
+		fprintf(stderr, "failed to lock %s: %s\n", name,
+		    zfs_strerror(err));
+		(void) close(*nfs_lock_fd);
+		*nfs_lock_fd = -1;
+		return (err);
+	}
 
 	return (0);
 }
 
-typedef struct nfs_host_cookie_s {
-	nfs_host_callback_t callback;
-	const char *sharepath;
-	void *cookie;
-	const char *security;
-} nfs_host_cookie_t;
-
-/*
- * Helper function for foreach_nfs_host. This function checks whether the
- * current share option is a host specification and invokes a callback
- * function with information about the host.
- */
-static int
-foreach_nfs_host_cb(const char *opt, const char *value, void *pcookie)
-{
-	int rc;
-	const char *access;
-	char *host_dup, *host, *next;
-	nfs_host_cookie_t *udata = (nfs_host_cookie_t *)pcookie;
-
-#ifdef DEBUG
-	fprintf(stderr, "foreach_nfs_host_cb: key=%s, value=%s\n", opt, value);
-#endif
-
-	if (strcmp(opt, "sec") == 0)
-		udata->security = value;
-
-	if (strcmp(opt, "rw") == 0 || strcmp(opt, "ro") == 0) {
-		if (value == NULL)
-			value = "*";
-
-		access = opt;
-
-		host_dup = strdup(value);
-
-		if (host_dup == NULL)
-			return (SA_NO_MEMORY);
-
-		host = host_dup;
-
-		do {
-			next = strchr(host, ':');
-			if (next != NULL) {
-				*next = '\0';
-				next++;
-			}
-
-			rc = udata->callback(udata->sharepath, host,
-			    udata->security, access, udata->cookie);
-
-			if (rc != SA_OK) {
-				free(host_dup);
-
-				return (rc);
-			}
-
-			host = next;
-		} while (host != NULL);
-
-		free(host_dup);
-	}
-
-	return (SA_OK);
-}
-
-/*
- * Invokes a callback function for all NFS hosts that are set for a share.
- */
-static int
-foreach_nfs_host(sa_share_impl_t impl_share, nfs_host_callback_t callback,
-    void *cookie)
-{
-	nfs_host_cookie_t udata;
-	char *shareopts;
-
-	udata.callback = callback;
-	udata.sharepath = impl_share->sharepath;
-	udata.cookie = cookie;
-	udata.security = "sys";
-
-	shareopts = FSINFO(impl_share, nfs_fstype)->shareopts;
-
-	return foreach_nfs_shareopt(shareopts, foreach_nfs_host_cb,
-	    &udata);
-}
-
-/*
- * Converts a Solaris NFS host specification to its Linux equivalent.
- */
-static int
-get_linux_hostspec(const char *solaris_hostspec, char **plinux_hostspec)
-{
-	/*
-	 * For now we just support CIDR masks (e.g. @192.168.0.0/16) and host
-	 * wildcards (e.g. *.example.org).
-	 */
-	if (solaris_hostspec[0] == '@') {
-		/*
-		 * Solaris host specifier, e.g. @192.168.0.0/16; we just need
-		 * to skip the @ in this case
-		 */
-		*plinux_hostspec = strdup(solaris_hostspec + 1);
-	} else {
-		*plinux_hostspec = strdup(solaris_hostspec);
-	}
-
-	if (*plinux_hostspec == NULL) {
-		return (SA_NO_MEMORY);
-	}
-
-	return (SA_OK);
-}
-
-/*
- * Used internally by nfs_enable_share to enable sharing for a single host.
- */
-static int
-nfs_enable_share_one(const char *sharepath, const char *host,
-    const char *security, const char *access, void *pcookie)
-{
-	int rc;
-	char *linuxhost, *hostpath, *opts;
-	const char *linux_opts = (const char *)pcookie;
-	char *argv[6];
-
-	/* exportfs -i -o sec=XX,rX,<opts> <host>:<sharepath> */
-
-	rc = get_linux_hostspec(host, &linuxhost);
-
-	if (rc < 0)
-		exit(1);
-
-	hostpath = malloc(strlen(linuxhost) + 1 + strlen(sharepath) + 1);
-
-	if (hostpath == NULL) {
-		free(linuxhost);
-
-		exit(1);
-	}
-
-	sprintf(hostpath, "%s:%s", linuxhost, sharepath);
-
-	free(linuxhost);
-
-	if (linux_opts == NULL)
-		linux_opts = "";
-
-	opts = malloc(4 + strlen(security) + 4 + strlen(linux_opts) + 1);
-
-	if (opts == NULL)
-		exit(1);
-
-	sprintf(opts, "sec=%s,%s,%s", security, access, linux_opts);
-
-#ifdef DEBUG
-	fprintf(stderr, "sharing %s with opts %s\n", hostpath, opts);
-#endif
-
-	argv[0] = "/usr/sbin/exportfs";
-	argv[1] = "-i";
-	argv[2] = "-o";
-	argv[3] = opts;
-	argv[4] = hostpath;
-	argv[5] = NULL;
-
-	rc = libzfs_run_process(argv[0], argv, 0);
-
-	free(hostpath);
-	free(opts);
-
-	if (rc < 0)
-		return (SA_SYSTEM_ERR);
-	else
-		return (SA_OK);
-}
-
-/*
- * Adds a Linux share option to an array of NFS options.
- */
-static int
-add_linux_shareopt(char **plinux_opts, const char *key, const char *value)
-{
-	size_t len = 0;
-	char *new_linux_opts;
-
-	if (*plinux_opts != NULL)
-		len = strlen(*plinux_opts);
-
-	new_linux_opts = realloc(*plinux_opts, len + 1 + strlen(key) +
-	    (value ? 1 + strlen(value) : 0) + 1);
-
-	if (new_linux_opts == NULL)
-		return (SA_NO_MEMORY);
-
-	new_linux_opts[len] = '\0';
-
-	if (len > 0)
-		strcat(new_linux_opts, ",");
-
-	strcat(new_linux_opts, key);
-
-	if (value != NULL) {
-		strcat(new_linux_opts, "=");
-		strcat(new_linux_opts, value);
-	}
-
-	*plinux_opts = new_linux_opts;
-
-	return (SA_OK);
-}
-
-/*
- * Validates and converts a single Solaris share option to its Linux
- * equivalent.
- */
-static int
-get_linux_shareopts_cb(const char *key, const char *value, void *cookie)
-{
-	char **plinux_opts = (char **)cookie;
-
-	/* host-specific options, these are taken care of elsewhere */
-	if (strcmp(key, "ro") == 0 || strcmp(key, "rw") == 0 ||
-	    strcmp(key, "sec") == 0)
-		return (SA_OK);
-
-	if (strcmp(key, "anon") == 0)
-		key = "anonuid";
-
-	if (strcmp(key, "root_mapping") == 0) {
-		(void) add_linux_shareopt(plinux_opts, "root_squash", NULL);
-		key = "anonuid";
-	}
-
-	if (strcmp(key, "nosub") == 0)
-		key = "subtree_check";
-
-	if (strcmp(key, "insecure") != 0 && strcmp(key, "secure") != 0 &&
-	    strcmp(key, "async") != 0 && strcmp(key, "sync") != 0 &&
-	    strcmp(key, "no_wdelay") != 0 && strcmp(key, "wdelay") != 0 &&
-	    strcmp(key, "nohide") != 0 && strcmp(key, "hide") != 0 &&
-	    strcmp(key, "crossmnt") != 0 &&
-	    strcmp(key, "no_subtree_check") != 0 &&
-	    strcmp(key, "subtree_check") != 0 &&
-	    strcmp(key, "insecure_locks") != 0 &&
-	    strcmp(key, "secure_locks") != 0 &&
-	    strcmp(key, "no_auth_nlm") != 0 && strcmp(key, "auth_nlm") != 0 &&
-	    strcmp(key, "no_acl") != 0 && strcmp(key, "mountpoint") != 0 &&
-	    strcmp(key, "mp") != 0 && strcmp(key, "fsuid") != 0 &&
-	    strcmp(key, "refer") != 0 && strcmp(key, "replicas") != 0 &&
-	    strcmp(key, "root_squash") != 0 &&
-	    strcmp(key, "no_root_squash") != 0 &&
-	    strcmp(key, "all_squash") != 0 &&
-	    strcmp(key, "no_all_squash") != 0 && strcmp(key, "fsid") != 0 &&
-	    strcmp(key, "anonuid") != 0 && strcmp(key, "anongid") != 0) {
-		return (SA_SYNTAX_ERR);
-	}
-
-	(void) add_linux_shareopt(plinux_opts, key, value);
-
-	return (SA_OK);
-}
-
-/*
- * Takes a string containing Solaris share options (e.g. "sync,no_acl") and
- * converts them to a NULL-terminated array of Linux NFS options.
- */
-static int
-get_linux_shareopts(const char *shareopts, char **plinux_opts)
-{
-	int rc;
-
-	assert(plinux_opts != NULL);
-
-	*plinux_opts = NULL;
-
-	/* default options for Solaris shares */
-	(void) add_linux_shareopt(plinux_opts, "no_subtree_check", NULL);
-	(void) add_linux_shareopt(plinux_opts, "no_root_squash", NULL);
-	(void) add_linux_shareopt(plinux_opts, "mountpoint", NULL);
-
-	rc = foreach_nfs_shareopt(shareopts, get_linux_shareopts_cb,
-	    plinux_opts);
-
-	if (rc != SA_OK) {
-		free(*plinux_opts);
-		*plinux_opts = NULL;
-	}
-
-	return (rc);
-}
-
-/*
- * Enables NFS sharing for the specified share.
- */
-static int
-nfs_enable_share(sa_share_impl_t impl_share)
-{
-	char *shareopts, *linux_opts;
-	int rc;
-
-	if (!nfs_available()) {
-		return (SA_SYSTEM_ERR);
-	}
-
-	shareopts = FSINFO(impl_share, nfs_fstype)->shareopts;
-
-	if (shareopts == NULL)
-		return (SA_OK);
-
-	rc = get_linux_shareopts(shareopts, &linux_opts);
-
-	if (rc != SA_OK)
-		return (rc);
-
-	rc = foreach_nfs_host(impl_share, nfs_enable_share_one, linux_opts);
-
-	free(linux_opts);
-
-	return (rc);
-}
-
-/*
- * Used internally by nfs_disable_share to disable sharing for a single host.
- */
-static int
-nfs_disable_share_one(const char *sharepath, const char *host,
-    const char *security, const char *access, void *cookie)
-{
-	int rc;
-	char *linuxhost, *hostpath;
-	char *argv[4];
-
-	rc = get_linux_hostspec(host, &linuxhost);
-
-	if (rc < 0)
-		exit(1);
-
-	hostpath = malloc(strlen(linuxhost) + 1 + strlen(sharepath) + 1);
-
-	if (hostpath == NULL) {
-		free(linuxhost);
-		exit(1);
-	}
-
-	sprintf(hostpath, "%s:%s", linuxhost, sharepath);
-
-	free(linuxhost);
-
-#ifdef DEBUG
-	fprintf(stderr, "unsharing %s\n", hostpath);
-#endif
-
-	argv[0] = "/usr/sbin/exportfs";
-	argv[1] = "-u";
-	argv[2] = hostpath;
-	argv[3] = NULL;
-
-	rc = libzfs_run_process(argv[0], argv, 0);
-
-	free(hostpath);
-
-	if (rc < 0)
-		return (SA_SYSTEM_ERR);
-	else
-		return (SA_OK);
-}
-
-/*
- * Disables NFS sharing for the specified share.
- */
-static int
-nfs_disable_share(sa_share_impl_t impl_share)
-{
-	if (!nfs_available()) {
-		/*
-		 * The share can't possibly be active, so nothing
-		 * needs to be done to disable it.
-		 */
-		return (SA_OK);
-	}
-
-	return (foreach_nfs_host(impl_share, nfs_disable_share_one, NULL));
-}
-
-/*
- * Checks whether the specified NFS share options are syntactically correct.
- */
-static int
-nfs_validate_shareopts(const char *shareopts)
-{
-	char *linux_opts;
-	int rc;
-
-	rc = get_linux_shareopts(shareopts, &linux_opts);
-
-	if (rc != SA_OK)
-		return (rc);
-
-	free(linux_opts);
-
-	return (SA_OK);
-}
-
-/*
- * Checks whether a share is currently active.
- */
-static boolean_t
-nfs_is_share_active(sa_share_impl_t impl_share)
-{
-	int fd;
-	char line[512];
-	char *tab, *cur;
-	FILE *nfs_exportfs_temp_fp;
-
-	if (!nfs_available())
-		return (B_FALSE);
-
-	if ((fd = dup(nfs_exportfs_temp_fd)) == -1)
-		return (B_FALSE);
-
-	nfs_exportfs_temp_fp = fdopen(fd, "r");
-
-	if (nfs_exportfs_temp_fp == NULL)
-		return (B_FALSE);
-
-	if (fseek(nfs_exportfs_temp_fp, 0, SEEK_SET) < 0) {
-		fclose(nfs_exportfs_temp_fp);
-		return (B_FALSE);
-	}
-
-	while (fgets(line, sizeof (line), nfs_exportfs_temp_fp) != NULL) {
-		/*
-		 * exportfs uses separate lines for the share path
-		 * and the export options when the share path is longer
-		 * than a certain amount of characters; this ignores
-		 * the option lines
-		 */
-		if (line[0] == '\t')
-			continue;
-
-		tab = strchr(line, '\t');
-
-		if (tab != NULL) {
-			*tab = '\0';
-			cur = tab - 1;
-		} else {
-			/*
-			 * there's no tab character, which means the
-			 * NFS options are on a separate line; we just
-			 * need to remove the new-line character
-			 * at the end of the line
-			 */
-			cur = line + strlen(line) - 1;
-		}
-
-		/* remove trailing spaces and new-line characters */
-		while (cur >= line && (*cur == ' ' || *cur == '\n'))
-			*cur-- = '\0';
-
-		if (strcmp(line, impl_share->sharepath) == 0) {
-			fclose(nfs_exportfs_temp_fp);
-			return (B_TRUE);
-		}
-	}
-
-	fclose(nfs_exportfs_temp_fp);
-
-	return (B_FALSE);
-}
-
-/*
- * Called to update a share's options. A share's options might be out of
- * date if the share was loaded from disk (i.e. /etc/dfs/sharetab) and the
- * "sharenfs" dataset property has changed in the meantime. This function
- * also takes care of re-enabling the share if necessary.
- */
-static int
-nfs_update_shareopts(sa_share_impl_t impl_share, const char *resource,
-    const char *shareopts)
-{
-	char *shareopts_dup;
-	boolean_t needs_reshare = B_FALSE;
-	char *old_shareopts;
-
-	FSINFO(impl_share, nfs_fstype)->active =
-	    nfs_is_share_active(impl_share);
-
-	old_shareopts = FSINFO(impl_share, nfs_fstype)->shareopts;
-
-	if (strcmp(shareopts, "on") == 0)
-		shareopts = "rw,crossmnt";
-
-	if (FSINFO(impl_share, nfs_fstype)->active && old_shareopts != NULL &&
-	    strcmp(old_shareopts, shareopts) != 0) {
-		needs_reshare = B_TRUE;
-		nfs_disable_share(impl_share);
-	}
-
-	shareopts_dup = strdup(shareopts);
-
-	if (shareopts_dup == NULL)
-		return (SA_NO_MEMORY);
-
-	if (old_shareopts != NULL)
-		free(old_shareopts);
-
-	FSINFO(impl_share, nfs_fstype)->shareopts = shareopts_dup;
-
-	if (needs_reshare)
-		nfs_enable_share(impl_share);
-
-	return (SA_OK);
-}
-
-/*
- * Clears a share's NFS options. Used by libshare to
- * clean up shares that are about to be free()'d.
- */
 static void
-nfs_clear_shareopts(sa_share_impl_t impl_share)
+nfs_exports_unlock(const char *name, int *nfs_lock_fd)
 {
-	free(FSINFO(impl_share, nfs_fstype)->shareopts);
-	FSINFO(impl_share, nfs_fstype)->shareopts = NULL;
+	verify(*nfs_lock_fd > 0);
+
+	if (flock(*nfs_lock_fd, LOCK_UN) != 0)
+		fprintf(stderr, "failed to unlock %s: %s\n",
+		    name, zfs_strerror(errno));
+
+	(void) close(*nfs_lock_fd);
+	*nfs_lock_fd = -1;
 }
 
-static const sa_share_ops_t nfs_shareops = {
-	.enable_share = nfs_enable_share,
-	.disable_share = nfs_disable_share,
-
-	.validate_shareopts = nfs_validate_shareopts,
-	.update_shareopts = nfs_update_shareopts,
-	.clear_shareopts = nfs_clear_shareopts,
+struct tmpfile {
+	/*
+	 * This only needs to be as wide as ZFS_EXPORTS_FILE and mktemp suffix,
+	 * 64 is more than enough.
+	 */
+	char name[64];
+	FILE *fp;
 };
 
+static boolean_t
+nfs_init_tmpfile(const char *prefix, const char *mdir, struct tmpfile *tmpf)
+{
+	if (mdir != NULL &&
+	    mkdir(mdir, 0755) < 0 &&
+	    errno != EEXIST) {
+		fprintf(stderr, "failed to create %s: %s\n",
+		// cppcheck-suppress uninitvar
+		    mdir, zfs_strerror(errno));
+		return (B_FALSE);
+	}
+
+	strlcpy(tmpf->name, prefix, sizeof (tmpf->name));
+	strlcat(tmpf->name, ".XXXXXXXX", sizeof (tmpf->name));
+
+	int fd = mkostemp(tmpf->name, O_CLOEXEC);
+	if (fd == -1) {
+		fprintf(stderr, "Unable to create temporary file: %s",
+		    zfs_strerror(errno));
+		return (B_FALSE);
+	}
+
+	tmpf->fp = fdopen(fd, "w+");
+	if (tmpf->fp == NULL) {
+		fprintf(stderr, "Unable to reopen temporary file: %s",
+		    zfs_strerror(errno));
+		close(fd);
+		return (B_FALSE);
+	}
+
+	return (B_TRUE);
+}
+
+static void
+nfs_abort_tmpfile(struct tmpfile *tmpf)
+{
+	unlink(tmpf->name);
+	fclose(tmpf->fp);
+}
+
+static int
+nfs_fini_tmpfile(const char *exports, struct tmpfile *tmpf)
+{
+	if (fflush(tmpf->fp) != 0) {
+		fprintf(stderr, "Failed to write to temporary file: %s\n",
+		    zfs_strerror(errno));
+		nfs_abort_tmpfile(tmpf);
+		return (SA_SYSTEM_ERR);
+	}
+
+	if (rename(tmpf->name, exports) == -1) {
+		fprintf(stderr, "Unable to rename %s -> %s: %s\n",
+		    tmpf->name, exports, zfs_strerror(errno));
+		nfs_abort_tmpfile(tmpf);
+		return (SA_SYSTEM_ERR);
+	}
+
+	(void) fchmod(fileno(tmpf->fp), 0644);
+	fclose(tmpf->fp);
+	return (SA_OK);
+}
+
+int
+nfs_escape_mountpoint(const char *mp, char **out, boolean_t *need_free)
+{
+	if (strpbrk(mp, "\t\n\v\f\r \\") == NULL) {
+		*out = (char *)mp;
+		*need_free = B_FALSE;
+		return (SA_OK);
+	} else {
+		size_t len = strlen(mp);
+		*out = malloc(len * 4 + 1);
+		if (!*out)
+			return (SA_NO_MEMORY);
+		*need_free = B_TRUE;
+
+		char *oc = *out;
+		for (const char *c = mp; c < mp + len; ++c)
+			if (memchr("\t\n\v\f\r \\", *c,
+			    strlen("\t\n\v\f\r \\"))) {
+				sprintf(oc, "\\%03hho", *c);
+				oc += 4;
+			} else
+				*oc++ = *c;
+		*oc = '\0';
+	}
+
+	return (SA_OK);
+}
+
+static int
+nfs_process_exports(const char *exports, const char *mountpoint,
+    boolean_t (*cbk)(void *userdata, char *line, boolean_t found_mountpoint),
+    void *userdata)
+{
+	int error = SA_OK;
+	boolean_t cont = B_TRUE;
+
+	FILE *oldfp = fopen(exports, "re");
+	if (oldfp != NULL) {
+		boolean_t need_mp_free;
+		char *mp;
+		if ((error = nfs_escape_mountpoint(mountpoint,
+		    &mp, &need_mp_free)) != SA_OK) {
+			(void) fclose(oldfp);
+			return (error);
+		}
+
+		char *buf = NULL, *sep;
+		size_t buflen = 0, mplen = strlen(mp);
+
+		while (cont && getline(&buf, &buflen, oldfp) != -1) {
+			if (buf[0] == '\n' || buf[0] == '#')
+				continue;
+
+			cont = cbk(userdata, buf,
+			    (sep = strpbrk(buf, "\t \n")) != NULL &&
+			    sep - buf == mplen &&
+			    strncmp(buf, mp, mplen) == 0);
+		}
+		free(buf);
+		if (need_mp_free)
+			free(mp);
+
+		if (ferror(oldfp) != 0)
+			error = ferror(oldfp);
+
+		if (fclose(oldfp) != 0) {
+			fprintf(stderr, "Unable to close file %s: %s\n",
+			    exports, zfs_strerror(errno));
+			error = error != SA_OK ? error : SA_SYSTEM_ERR;
+		}
+	}
+
+	return (error);
+}
+
+static boolean_t
+nfs_copy_entries_cb(void *userdata, char *line, boolean_t found_mountpoint)
+{
+	FILE *newfp = userdata;
+	if (!found_mountpoint)
+		fputs(line, newfp);
+	return (B_TRUE);
+}
+
 /*
- * nfs_check_exportfs() checks that the exportfs command runs
- * and also maintains a temporary copy of the output from
- * exportfs -v.
- * To update this temporary copy simply call this function again.
- *
- * TODO : Use /var/lib/nfs/etab instead of our private copy.
- *        But must implement locking to prevent concurrent access.
- *
- * TODO : The temporary file descriptor is never closed since
- *        there is no libshare_nfs_fini() function.
+ * Copy all entries from the exports file (if it exists) to newfp,
+ * omitting any entries for the specified mountpoint.
  */
 static int
-nfs_check_exportfs(void)
+nfs_copy_entries(FILE *newfp, const char *exports, const char *mountpoint)
 {
-	pid_t pid;
-	int rc, status;
-	static char nfs_exportfs_tempfile[] = "/tmp/exportfs.XXXXXX";
+	fputs(FILE_HEADER, newfp);
 
-	/*
-	 * Close any existing temporary copies of output from exportfs.
-	 * We have already called unlink() so file will be deleted.
-	 */
-	if (nfs_exportfs_temp_fd >= 0)
-		close(nfs_exportfs_temp_fd);
+	int error = nfs_process_exports(
+	    exports, mountpoint, nfs_copy_entries_cb, newfp);
 
-	nfs_exportfs_temp_fd = mkstemp(nfs_exportfs_tempfile);
+	if (error == SA_OK && ferror(newfp) != 0)
+		error = ferror(newfp);
 
-	if (nfs_exportfs_temp_fd < 0)
-		return (SA_SYSTEM_ERR);
-
-	unlink(nfs_exportfs_tempfile);
-
-	(void) fcntl(nfs_exportfs_temp_fd, F_SETFD, FD_CLOEXEC);
-
-	pid = fork();
-
-	if (pid < 0) {
-		(void) close(nfs_exportfs_temp_fd);
-		nfs_exportfs_temp_fd = -1;
-		return (SA_SYSTEM_ERR);
-	}
-
-	if (pid > 0) {
-		while ((rc = waitpid(pid, &status, 0)) <= 0 &&
-		    errno == EINTR) { }
-
-		if (rc <= 0) {
-			(void) close(nfs_exportfs_temp_fd);
-			nfs_exportfs_temp_fd = -1;
-			return (SA_SYSTEM_ERR);
-		}
-
-		if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
-			(void) close(nfs_exportfs_temp_fd);
-			nfs_exportfs_temp_fd = -1;
-			return (SA_CONFIG_ERR);
-		}
-
-		return (SA_OK);
-	}
-
-	/* child */
-
-	/* exportfs -v */
-
-	if (dup2(nfs_exportfs_temp_fd, STDOUT_FILENO) < 0)
-		exit(1);
-
-	rc = execlp("/usr/sbin/exportfs", "exportfs", "-v", NULL);
-
-	if (rc < 0) {
-		exit(1);
-	}
-
-	exit(0);
+	return (error);
 }
 
-/*
- * Provides a convenient wrapper for determining nfs availability
- */
-static boolean_t
-nfs_available(void)
+int
+nfs_toggle_share(const char *lockfile, const char *exports,
+    const char *expdir, sa_share_impl_t impl_share,
+    int(*cbk)(sa_share_impl_t impl_share, FILE *tmpfile))
 {
-	if (nfs_exportfs_temp_fd == -1)
-		(void) nfs_check_exportfs();
+	int error, nfs_lock_fd = -1;
+	struct tmpfile tmpf;
 
-	return ((nfs_exportfs_temp_fd != -1) ? B_TRUE : B_FALSE);
+	if (!nfs_init_tmpfile(exports, expdir, &tmpf))
+		return (SA_SYSTEM_ERR);
+
+	error = nfs_exports_lock(lockfile, &nfs_lock_fd);
+	if (error != 0) {
+		nfs_abort_tmpfile(&tmpf);
+		return (error);
+	}
+
+	error = nfs_copy_entries(tmpf.fp, exports, impl_share->sa_mountpoint);
+	if (error != SA_OK)
+		goto fullerr;
+
+	error = cbk(impl_share, tmpf.fp);
+	if (error != SA_OK)
+		goto fullerr;
+
+	error = nfs_fini_tmpfile(exports, &tmpf);
+	nfs_exports_unlock(lockfile, &nfs_lock_fd);
+	return (error);
+
+fullerr:
+	nfs_abort_tmpfile(&tmpf);
+	nfs_exports_unlock(lockfile, &nfs_lock_fd);
+	return (error);
 }
 
-/*
- * Initializes the NFS functionality of libshare.
- */
 void
-libshare_nfs_init(void)
+nfs_reset_shares(const char *lockfile, const char *exports)
 {
-	nfs_fstype = register_fstype("nfs", &nfs_shareops);
+	int nfs_lock_fd = -1;
+
+	if (nfs_exports_lock(lockfile, &nfs_lock_fd) == 0) {
+		(void) ! truncate(exports, 0);
+		nfs_exports_unlock(lockfile, &nfs_lock_fd);
+	}
+}
+
+static boolean_t
+nfs_is_shared_cb(void *userdata, char *line, boolean_t found_mountpoint)
+{
+	(void) line;
+
+	boolean_t *found = userdata;
+	*found = found_mountpoint;
+	return (!found_mountpoint);
+}
+
+boolean_t
+nfs_is_shared_impl(const char *exports, sa_share_impl_t impl_share)
+{
+	boolean_t found = B_FALSE;
+	nfs_process_exports(exports, impl_share->sa_mountpoint,
+	    nfs_is_shared_cb, &found);
+	return (found);
 }

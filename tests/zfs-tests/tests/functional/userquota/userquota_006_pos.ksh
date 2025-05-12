@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -7,7 +8,7 @@
 # You may not use this file except in compliance with the License.
 #
 # You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
+# or https://opensource.org/licenses/CDDL-1.0.
 # See the License for the specific language governing permissions
 # and limitations under the License.
 #
@@ -44,9 +45,7 @@
 
 function cleanup
 {
-	if datasetexists $snap_fs; then
-		log_must zfs destroy $snap_fs
-	fi
+	datasetexists $snap_fs && destroy_dataset $snap_fs
 
 	log_must cleanup_quota
 }
@@ -67,7 +66,11 @@ done
 
 set -A no_groups "aidsf@dfsd@" "123223-dsfds#sdfsd" "mss_#ss" "1234"
 for group in "${no_groups[@]}"; do
-	log_mustnot eval "groupdel $group > /dev/null 2>&1"
+	if is_freebsd; then
+		log_mustnot eval "pw groupdel -n $group >/dev/null 2>&1"
+	else
+		log_mustnot eval "groupdel $group >/dev/null 2>&1"
+	fi
 	log_must eval "zfs get groupquota@$group $QFS >/dev/null 2>&1"
 	log_must eval "zfs get groupquota@$group $snap_fs >/dev/null 2>&1"
 done

@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -7,7 +8,7 @@
 # You may not use this file except in compliance with the License.
 #
 # You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
+# or https://opensource.org/licenses/CDDL-1.0.
 # See the License for the specific language governing permissions
 # and limitations under the License.
 #
@@ -21,14 +22,12 @@
 #
 
 #
-# Copyright 2009 Sun Microsystems, Inc.  All rights reserved.
+# Copyright (c) 2009, Sun Microsystems Inc. All rights reserved.
+# Copyright (c) 2016, 2017, Delphix. All rights reserved.
 # Use is subject to license terms.
 #
 
-#
-# Copyright (c) 2016, 2017 by Delphix. All rights reserved.
-#
-
+. $STF_SUITE/include/properties.shlib
 . $STF_SUITE/include/libtest.shlib
 . $STF_SUITE/tests/functional/cli_root/zfs_set/zfs_set_common.kshlib
 
@@ -93,9 +92,7 @@ typeset -i i=0
 
 for ds in $pool $fs $vol; do
 	for propname in ${ro_prop[*]}; do
-		zfs get -pH -o value $propname $ds >/dev/null 2>&1
-		(( $? != 0 )) && \
-			log_fail "Get the property $proname of $ds failed."
+		log_must eval "zfs get -pH -o value $propname $ds >/dev/null 2>&1"
 	done
 	i=0
 	while (( i < ${#rw_prop[*]} )); do
@@ -106,7 +103,7 @@ for ds in $pool $fs $vol; do
 			done
 			;;
 		compression|compress )
-			for val in $(get_compress_opts zfs_set); do
+			for val in "${compress_prop_vals[@]}"; do
 				set_and_check $ds ${rw_prop[i]} $val ${chk_prop[i]}
 			done
 			;;
@@ -122,9 +119,7 @@ for ds in $pool $fs $vol; do
 	done
 	if [[ $ds == $vol ]]; then
 		for propname in "volblocksize" "volblock" ; do
-			zfs get -pH -o value $propname $ds >/dev/null 2>&1
-			(( $? != 0 )) && \
-				log_fail "Get the property $propname of $ds failed."
+			log_must eval "zfs get -pH -o value $propname $ds >/dev/null 2>&1"
 		done
 	fi
 done

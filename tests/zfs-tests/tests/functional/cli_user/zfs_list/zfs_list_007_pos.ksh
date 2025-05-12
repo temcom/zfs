@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -7,7 +8,7 @@
 # You may not use this file except in compliance with the License.
 #
 # You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
+# or https://opensource.org/licenses/CDDL-1.0.
 # See the License for the specific language governing permissions
 # and limitations under the License.
 #
@@ -37,7 +38,7 @@
 #
 # STRATEGY:
 #	1. 'zfs list -d <n>' to get the output.
-#	2. 'zfs list -r|egrep' to get the expected output.
+#	2. 'zfs list -r|grep' to get the expected output.
 #	3. Compare the two outputs, they should be same.
 #
 
@@ -50,16 +51,14 @@ fi
 
 function cleanup
 {
-	log_must rm -f $DEPTH_OUTPUT
-	log_must rm -f $EXPECT_OUTPUT
+	log_must rm -f $DEPTH_OUTPUT $EXPECT_OUTPUT
 }
 
 log_onexit cleanup
 log_assert "'zfs list -d <n>' should get expected output."
 
-mntpnt=/var/tmp
-DEPTH_OUTPUT="$mntpnt/depth_output"
-EXPECT_OUTPUT="$mntpnt/expect_output"
+DEPTH_OUTPUT="$TEST_BASE_DIR/depth_output"
+EXPECT_OUTPUT="$TEST_BASE_DIR/expect_output"
 typeset -i old_val=0
 typeset -i j=0
 typeset -i fs=0
@@ -77,10 +76,10 @@ for dp in ${depth_array[@]}; do
 			log_must eval "zfs list -H -d $dp -o name -t ${fs_type[$fs]} $DEPTH_FS > $DEPTH_OUTPUT"
 			[[ -s "$DEPTH_OUTPUT" ]] && \
 				log_fail "$DEPTH_OUTPUT should be null."
-			log_mustnot zfs list -rH -o name -t ${fs_type[$fs]} $DEPTH_FS | egrep -e '$eg_opt'
+			log_mustnot zfs list -rH -o name -t ${fs_type[$fs]} $DEPTH_FS | grep -E "$eg_opt"
 		else
 			log_must eval "zfs list -H -d $dp -o name -t ${fs_type[$fs]} $DEPTH_FS > $DEPTH_OUTPUT"
-			log_must eval "zfs list -rH -o name -t ${fs_type[$fs]} $DEPTH_FS | egrep -e '$eg_opt' > $EXPECT_OUTPUT"
+			log_must eval "zfs list -rH -o name -t ${fs_type[$fs]} $DEPTH_FS | grep -E '$eg_opt' > $EXPECT_OUTPUT"
 			log_must diff $DEPTH_OUTPUT $EXPECT_OUTPUT
 		fi
 		(( fs+=1 ))

@@ -1,4 +1,5 @@
 #!/bin/ksh
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -7,7 +8,7 @@
 # You may not use this file except in compliance with the License.
 #
 # You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
+# or https://opensource.org/licenses/CDDL-1.0.
 # See the License for the specific language governing permissions
 # and limitations under the License.
 #
@@ -51,9 +52,7 @@ function cleanup
 		log_must umount $mntp
 	fi
 
-	if datasetexists $vol; then
-		log_must zfs destroy $vol
-	fi
+	datasetexists $vol && destroy_dataset $vol
 
 	if [[ -d $mntp ]]; then
                 rm -rf $mntp
@@ -70,8 +69,8 @@ if [[ ! -d $mntp ]]; then
 	mkdir -p $mntp
 fi
 
-for val in 1 2 3; do
-	do_vol_test $NEWFS_DEFAULT_FS $val $mntp
+for copies in 1 2 3; do
+	do_vol_test $NEWFS_DEFAULT_FS $copies $mntp
 done
 
 log_pass "The volume space used by multiple copies is charged correctly as expected. "

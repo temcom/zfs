@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -16,6 +17,7 @@
 
 #
 # Copyright (c) 2017 Datto, Inc. All rights reserved.
+# Copyright (c) 2019 DilOS
 #
 
 . $STF_SUITE/include/libtest.shlib
@@ -42,7 +44,7 @@ verify_runnable "both"
 function cleanup
 {
 	datasetexists $TESTPOOL/$TESTFS1 && \
-		log_must zfs destroy -f $TESTPOOL/$TESTFS1
+		destroy_dataset $TESTPOOL/$TESTFS1 -f
 }
 log_onexit cleanup
 
@@ -61,11 +63,11 @@ log_must verify_keyformat $TESTPOOL/$TESTFS1 "hex"
 log_must zfs unload-key $TESTPOOL/$TESTFS1
 log_must eval "echo $HEXKEY | zfs load-key $TESTPOOL/$TESTFS1"
 
-log_must eval "echo -n $RAWKEY | zfs change-key -o keyformat=raw" \
+log_must eval "printf '%s' $RAWKEY | zfs change-key -o keyformat=raw" \
 	"$TESTPOOL/$TESTFS1"
 log_must verify_keyformat $TESTPOOL/$TESTFS1 "raw"
 
 log_must zfs unload-key $TESTPOOL/$TESTFS1
-log_must eval "echo -n $RAWKEY | zfs load-key $TESTPOOL/$TESTFS1"
+log_must eval "printf '%s' $RAWKEY | zfs load-key $TESTPOOL/$TESTFS1"
 
 log_pass "'zfs change-key -o' changes the key format"

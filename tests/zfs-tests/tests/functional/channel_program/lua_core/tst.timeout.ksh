@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # This file and its contents are supplied under the terms of the
 # Common Development and Distribution License ("CDDL"), version 1.0.
@@ -13,8 +14,6 @@
 #
 # Copyright (c) 2016, 2017 by Delphix. All rights reserved.
 #
-
-verify_runnable "global"
 
 . $STF_SUITE/tests/functional/channel_program/channel_common.kshlib
 
@@ -36,15 +35,11 @@ function test_instr_limit
 {
 	typeset lim=$1
 
-	error=$(zfs program -t $lim $TESTPOOL $ZCP_ROOT/lua_core/tst.timeout.zcp 2>&1)
-	[[ $? -ne 0 ]] || log_fail "Channel program with limit $lim exited 0: $error"
+	log_mustnot eval 'error=$(zfs program -t '$lim' $TESTPOOL $ZCP_ROOT/lua_core/tst.timeout.zcp 2>&1)'
 
-	instrs_run=$(echo $error | sed -n 's/.\+ \([0-9]*\) Lua instructions/\1/p')
-	if [[ $instrs_run -lt $(( $lim - 100 )) ]]; then
-		log_fail "Runtime (${instrs_run} instr) < limit (${lim} - 100 instr)"
-	elif [[ $instrs_run -gt $(( $lim + 100 )) ]]; then
-		log_fail "Runtime (${instrs_run} instr) > limit (${lim} + 100 instr)"
-	fi
+	read -r instrs_run _ < <(echo $error | awk -F "chunk" '{print $2}')
+	log_must [ $instrs_run -ge $(( $lim - 100 )) ]
+	log_must [ $instrs_run -le $(( $lim + 100 )) ]
 	log_note "With limit $lim the program ended after $instrs_run instructions"
 }
 

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: CDDL-1.0
 /*
  * CDDL HEADER START
  *
@@ -6,7 +7,7 @@
  * You may not use this file except in compliance with the License.
  *
  * You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
- * or http://www.opensolaris.org/os/licensing.
+ * or https://opensource.org/licenses/CDDL-1.0.
  * See the License for the specific language governing permissions
  * and limitations under the License.
  *
@@ -31,7 +32,7 @@
  * Name-Value Pair Lists
  *
  * The embodiment of an FMA protocol element (event, fmri or authority) is a
- * name-value pair list (nvlist_t).  FMA-specific nvlist construtor and
+ * name-value pair list (nvlist_t).  FMA-specific nvlist constructor and
  * destructor functions, fm_nvlist_create() and fm_nvlist_destroy(), are used
  * to create an nvpair list using custom allocators.  Callers may choose to
  * allocate either from the kernel memory allocator, or from a preallocated
@@ -66,16 +67,11 @@
 #ifdef _KERNEL
 #include <sys/atomic.h>
 #include <sys/condvar.h>
-#include <sys/console.h>
-#include <sys/kobj.h>
-#include <sys/time.h>
 #include <sys/zfs_ioctl.h>
 
-int zfs_zevent_len_max = 0;
-int zfs_zevent_cols = 80;
-int zfs_zevent_console = 0;
+static uint_t zfs_zevent_len_max = 512;
 
-static int zevent_len_cur = 0;
+static uint_t zevent_len_cur = 0;
 static int zevent_waiters = 0;
 static int zevent_flags = 0;
 
@@ -105,319 +101,20 @@ struct erpt_kstat {
 	kstat_named_t	erpt_set_failed;	/* num erpt set failures */
 	kstat_named_t	fmri_set_failed;	/* num fmri set failures */
 	kstat_named_t	payload_set_failed;	/* num payload set failures */
+	kstat_named_t	erpt_duplicates;	/* num duplicate erpts */
 };
 
 static struct erpt_kstat erpt_kstat_data = {
 	{ "erpt-dropped", KSTAT_DATA_UINT64 },
 	{ "erpt-set-failed", KSTAT_DATA_UINT64 },
 	{ "fmri-set-failed", KSTAT_DATA_UINT64 },
-	{ "payload-set-failed", KSTAT_DATA_UINT64 }
+	{ "payload-set-failed", KSTAT_DATA_UINT64 },
+	{ "erpt-duplicates", KSTAT_DATA_UINT64 }
 };
 
 kstat_t *fm_ksp;
 
 #ifdef _KERNEL
-
-/*
- * Formatting utility function for fm_nvprintr.  We attempt to wrap chunks of
- * output so they aren't split across console lines, and return the end column.
- */
-/*PRINTFLIKE4*/
-static int
-fm_printf(int depth, int c, int cols, const char *format, ...)
-{
-	va_list ap;
-	int width;
-	char c1;
-
-	va_start(ap, format);
-	width = vsnprintf(&c1, sizeof (c1), format, ap);
-	va_end(ap);
-
-	if (c + width >= cols) {
-		console_printf("\n");
-		c = 0;
-		if (format[0] != ' ' && depth > 0) {
-			console_printf(" ");
-			c++;
-		}
-	}
-
-	va_start(ap, format);
-	console_vprintf(format, ap);
-	va_end(ap);
-
-	return ((c + width) % cols);
-}
-
-/*
- * Recursively print an nvlist in the specified column width and return the
- * column we end up in.  This function is called recursively by fm_nvprint(),
- * below.  We generically format the entire nvpair using hexadecimal
- * integers and strings, and elide any integer arrays.  Arrays are basically
- * used for cache dumps right now, so we suppress them so as not to overwhelm
- * the amount of console output we produce at panic time.  This can be further
- * enhanced as FMA technology grows based upon the needs of consumers.  All
- * FMA telemetry is logged using the dump device transport, so the console
- * output serves only as a fallback in case this procedure is unsuccessful.
- */
-static int
-fm_nvprintr(nvlist_t *nvl, int d, int c, int cols)
-{
-	nvpair_t *nvp;
-
-	for (nvp = nvlist_next_nvpair(nvl, NULL);
-	    nvp != NULL; nvp = nvlist_next_nvpair(nvl, nvp)) {
-
-		data_type_t type = nvpair_type(nvp);
-		const char *name = nvpair_name(nvp);
-
-		boolean_t b;
-		uint8_t i8;
-		uint16_t i16;
-		uint32_t i32;
-		uint64_t i64;
-		char *str;
-		nvlist_t *cnv;
-
-		if (strcmp(name, FM_CLASS) == 0)
-			continue; /* already printed by caller */
-
-		c = fm_printf(d, c, cols, " %s=", name);
-
-		switch (type) {
-		case DATA_TYPE_BOOLEAN:
-			c = fm_printf(d + 1, c, cols, " 1");
-			break;
-
-		case DATA_TYPE_BOOLEAN_VALUE:
-			(void) nvpair_value_boolean_value(nvp, &b);
-			c = fm_printf(d + 1, c, cols, b ? "1" : "0");
-			break;
-
-		case DATA_TYPE_BYTE:
-			(void) nvpair_value_byte(nvp, &i8);
-			c = fm_printf(d + 1, c, cols, "0x%x", i8);
-			break;
-
-		case DATA_TYPE_INT8:
-			(void) nvpair_value_int8(nvp, (void *)&i8);
-			c = fm_printf(d + 1, c, cols, "0x%x", i8);
-			break;
-
-		case DATA_TYPE_UINT8:
-			(void) nvpair_value_uint8(nvp, &i8);
-			c = fm_printf(d + 1, c, cols, "0x%x", i8);
-			break;
-
-		case DATA_TYPE_INT16:
-			(void) nvpair_value_int16(nvp, (void *)&i16);
-			c = fm_printf(d + 1, c, cols, "0x%x", i16);
-			break;
-
-		case DATA_TYPE_UINT16:
-			(void) nvpair_value_uint16(nvp, &i16);
-			c = fm_printf(d + 1, c, cols, "0x%x", i16);
-			break;
-
-		case DATA_TYPE_INT32:
-			(void) nvpair_value_int32(nvp, (void *)&i32);
-			c = fm_printf(d + 1, c, cols, "0x%x", i32);
-			break;
-
-		case DATA_TYPE_UINT32:
-			(void) nvpair_value_uint32(nvp, &i32);
-			c = fm_printf(d + 1, c, cols, "0x%x", i32);
-			break;
-
-		case DATA_TYPE_INT64:
-			(void) nvpair_value_int64(nvp, (void *)&i64);
-			c = fm_printf(d + 1, c, cols, "0x%llx",
-			    (u_longlong_t)i64);
-			break;
-
-		case DATA_TYPE_UINT64:
-			(void) nvpair_value_uint64(nvp, &i64);
-			c = fm_printf(d + 1, c, cols, "0x%llx",
-			    (u_longlong_t)i64);
-			break;
-
-		case DATA_TYPE_HRTIME:
-			(void) nvpair_value_hrtime(nvp, (void *)&i64);
-			c = fm_printf(d + 1, c, cols, "0x%llx",
-			    (u_longlong_t)i64);
-			break;
-
-		case DATA_TYPE_STRING:
-			(void) nvpair_value_string(nvp, &str);
-			c = fm_printf(d + 1, c, cols, "\"%s\"",
-			    str ? str : "<NULL>");
-			break;
-
-		case DATA_TYPE_NVLIST:
-			c = fm_printf(d + 1, c, cols, "[");
-			(void) nvpair_value_nvlist(nvp, &cnv);
-			c = fm_nvprintr(cnv, d + 1, c, cols);
-			c = fm_printf(d + 1, c, cols, " ]");
-			break;
-
-		case DATA_TYPE_NVLIST_ARRAY: {
-			nvlist_t **val;
-			uint_t i, nelem;
-
-			c = fm_printf(d + 1, c, cols, "[");
-			(void) nvpair_value_nvlist_array(nvp, &val, &nelem);
-			for (i = 0; i < nelem; i++) {
-				c = fm_nvprintr(val[i], d + 1, c, cols);
-			}
-			c = fm_printf(d + 1, c, cols, " ]");
-			}
-			break;
-
-		case DATA_TYPE_INT8_ARRAY: {
-			int8_t *val;
-			uint_t i, nelem;
-
-			c = fm_printf(d + 1, c, cols, "[ ");
-			(void) nvpair_value_int8_array(nvp, &val, &nelem);
-			for (i = 0; i < nelem; i++)
-				c = fm_printf(d + 1, c, cols, "0x%llx ",
-				    (u_longlong_t)val[i]);
-
-			c = fm_printf(d + 1, c, cols, "]");
-			break;
-			}
-
-		case DATA_TYPE_UINT8_ARRAY: {
-			uint8_t *val;
-			uint_t i, nelem;
-
-			c = fm_printf(d + 1, c, cols, "[ ");
-			(void) nvpair_value_uint8_array(nvp, &val, &nelem);
-			for (i = 0; i < nelem; i++)
-				c = fm_printf(d + 1, c, cols, "0x%llx ",
-				    (u_longlong_t)val[i]);
-
-			c = fm_printf(d + 1, c, cols, "]");
-			break;
-			}
-
-		case DATA_TYPE_INT16_ARRAY: {
-			int16_t *val;
-			uint_t i, nelem;
-
-			c = fm_printf(d + 1, c, cols, "[ ");
-			(void) nvpair_value_int16_array(nvp, &val, &nelem);
-			for (i = 0; i < nelem; i++)
-				c = fm_printf(d + 1, c, cols, "0x%llx ",
-				    (u_longlong_t)val[i]);
-
-			c = fm_printf(d + 1, c, cols, "]");
-			break;
-			}
-
-		case DATA_TYPE_UINT16_ARRAY: {
-			uint16_t *val;
-			uint_t i, nelem;
-
-			c = fm_printf(d + 1, c, cols, "[ ");
-			(void) nvpair_value_uint16_array(nvp, &val, &nelem);
-			for (i = 0; i < nelem; i++)
-				c = fm_printf(d + 1, c, cols, "0x%llx ",
-				    (u_longlong_t)val[i]);
-
-			c = fm_printf(d + 1, c, cols, "]");
-			break;
-			}
-
-		case DATA_TYPE_INT32_ARRAY: {
-			int32_t *val;
-			uint_t i, nelem;
-
-			c = fm_printf(d + 1, c, cols, "[ ");
-			(void) nvpair_value_int32_array(nvp, &val, &nelem);
-			for (i = 0; i < nelem; i++)
-			c = fm_printf(d + 1, c, cols, "0x%llx ",
-			    (u_longlong_t)val[i]);
-
-			c = fm_printf(d + 1, c, cols, "]");
-			break;
-			}
-
-		case DATA_TYPE_UINT32_ARRAY: {
-			uint32_t *val;
-			uint_t i, nelem;
-
-			c = fm_printf(d + 1, c, cols, "[ ");
-			(void) nvpair_value_uint32_array(nvp, &val, &nelem);
-			for (i = 0; i < nelem; i++)
-				c = fm_printf(d + 1, c, cols, "0x%llx ",
-				    (u_longlong_t)val[i]);
-
-			c = fm_printf(d + 1, c, cols, "]");
-			break;
-			}
-
-		case DATA_TYPE_INT64_ARRAY: {
-			int64_t *val;
-			uint_t i, nelem;
-
-			c = fm_printf(d + 1, c, cols, "[ ");
-			(void) nvpair_value_int64_array(nvp, &val, &nelem);
-			for (i = 0; i < nelem; i++)
-				c = fm_printf(d + 1, c, cols, "0x%llx ",
-				    (u_longlong_t)val[i]);
-
-			c = fm_printf(d + 1, c, cols, "]");
-			break;
-			}
-
-		case DATA_TYPE_UINT64_ARRAY: {
-			uint64_t *val;
-			uint_t i, nelem;
-
-			c = fm_printf(d + 1, c, cols, "[ ");
-			(void) nvpair_value_uint64_array(nvp, &val, &nelem);
-			for (i = 0; i < nelem; i++)
-				c = fm_printf(d + 1, c, cols, "0x%llx ",
-				    (u_longlong_t)val[i]);
-
-			c = fm_printf(d + 1, c, cols, "]");
-			break;
-			}
-
-		case DATA_TYPE_STRING_ARRAY:
-		case DATA_TYPE_BOOLEAN_ARRAY:
-		case DATA_TYPE_BYTE_ARRAY:
-			c = fm_printf(d + 1, c, cols, "[...]");
-			break;
-
-		case DATA_TYPE_UNKNOWN:
-		case DATA_TYPE_DONTCARE:
-			c = fm_printf(d + 1, c, cols, "<unknown>");
-			break;
-		}
-	}
-
-	return (c);
-}
-
-void
-fm_nvprint(nvlist_t *nvl)
-{
-	char *class;
-	int c = 0;
-
-	console_printf("\n");
-
-	if (nvlist_lookup_string(nvl, FM_CLASS, &class) == 0)
-		c = fm_printf(0, c, zfs_zevent_cols, "%s", class);
-
-	if (fm_nvprintr(nvl, 0, c, zfs_zevent_cols) != 0)
-		console_printf("\n");
-
-	console_printf("\n");
-}
 
 static zevent_t *
 zfs_zevent_alloc(void)
@@ -452,8 +149,7 @@ zfs_zevent_drain(zevent_t *ev)
 	list_remove(&zevent_list, ev);
 
 	/* Remove references to this event in all private file data */
-	while ((ze = list_head(&ev->ev_ze_list)) != NULL) {
-		list_remove(&ev->ev_ze_list, ze);
+	while ((ze = list_remove_head(&ev->ev_ze_list)) != NULL) {
 		ze->ze_zevent = NULL;
 		ze->ze_dropped++;
 	}
@@ -462,7 +158,7 @@ zfs_zevent_drain(zevent_t *ev)
 }
 
 void
-zfs_zevent_drain_all(int *count)
+zfs_zevent_drain_all(uint_t *count)
 {
 	zevent_t *ev;
 
@@ -542,9 +238,6 @@ zfs_zevent_post(nvlist_t *nvl, nvlist_t *detector, zevent_cb_t *cb)
 		goto out;
 	}
 
-	if (zfs_zevent_console)
-		fm_nvprint(nvl);
-
 	ev = zfs_zevent_alloc();
 	if (ev == NULL) {
 		atomic_inc_64(&erpt_kstat_data.erpt_dropped.value.ui64);
@@ -569,6 +262,12 @@ out:
 	return (error);
 }
 
+void
+zfs_zevent_track_duplicate(void)
+{
+	atomic_inc_64(&erpt_kstat_data.erpt_duplicates.value.ui64);
+}
+
 static int
 zfs_zevent_minor_to_state(minor_t minor, zfs_zevent_t **ze)
 {
@@ -579,30 +278,29 @@ zfs_zevent_minor_to_state(minor_t minor, zfs_zevent_t **ze)
 	return (0);
 }
 
-int
+zfs_file_t *
 zfs_zevent_fd_hold(int fd, minor_t *minorp, zfs_zevent_t **ze)
 {
-	file_t *fp;
-	int error;
-
-	fp = getf(fd);
+	zfs_file_t *fp = zfs_file_get(fd);
 	if (fp == NULL)
-		return (SET_ERROR(EBADF));
+		return (NULL);
 
-	error = zfsdev_getminor(fp->f_file, minorp);
+	int error = zfsdev_getminor(fp, minorp);
 	if (error == 0)
 		error = zfs_zevent_minor_to_state(*minorp, ze);
 
-	if (error)
-		zfs_zevent_fd_rele(fd);
+	if (error) {
+		zfs_zevent_fd_rele(fp);
+		fp = NULL;
+	}
 
-	return (error);
+	return (fp);
 }
 
 void
-zfs_zevent_fd_rele(int fd)
+zfs_zevent_fd_rele(zfs_file_t *fp)
 {
-	releasef(fd);
+	zfs_file_put(fp);
 }
 
 /*
@@ -656,8 +354,7 @@ zfs_zevent_next(zfs_zevent_t *ze, nvlist_t **event, uint64_t *event_size,
 
 #ifdef _KERNEL
 	/* Include events dropped due to rate limiting */
-	*dropped += ratelimit_dropped;
-	ratelimit_dropped = 0;
+	*dropped += atomic_swap_64(&ratelimit_dropped, 0);
 #endif
 	ze->ze_dropped = 0;
 out:
@@ -683,9 +380,7 @@ zfs_zevent_wait(zfs_zevent_t *ze)
 			break;
 		}
 
-		error = cv_timedwait_sig(&zevent_cv, &zevent_lock,
-		    ddi_get_lbolt() + MSEC_TO_TICK(10));
-		if (signal_pending(current)) {
+		if (cv_wait_sig(&zevent_cv, &zevent_lock) == 0) {
 			error = SET_ERROR(EINTR);
 			break;
 		} else if (!list_is_empty(&zevent_list)) {
@@ -785,23 +480,23 @@ zfs_zevent_destroy(zfs_zevent_t *ze)
 #endif /* _KERNEL */
 
 /*
- * Wrapppers for FM nvlist allocators
+ * Wrappers for FM nvlist allocators
  */
-/* ARGSUSED */
 static void *
 i_fm_alloc(nv_alloc_t *nva, size_t size)
 {
-	return (kmem_zalloc(size, KM_SLEEP));
+	(void) nva;
+	return (kmem_alloc(size, KM_SLEEP));
 }
 
-/* ARGSUSED */
 static void
 i_fm_free(nv_alloc_t *nva, void *buf, size_t size)
 {
+	(void) nva;
 	kmem_free(buf, size);
 }
 
-const nv_alloc_ops_t fm_mem_alloc_ops = {
+static const nv_alloc_ops_t fm_mem_alloc_ops = {
 	.nv_ao_init = NULL,
 	.nv_ao_fini = NULL,
 	.nv_ao_alloc = i_fm_alloc,
@@ -1006,7 +701,7 @@ i_fm_payload_set(nvlist_t *payload, const char *name, va_list ap)
 		case DATA_TYPE_STRING_ARRAY:
 			nelem = va_arg(ap, int);
 			ret = nvlist_add_string_array(payload, name,
-			    va_arg(ap, char **), nelem);
+			    va_arg(ap, const char **), nelem);
 			break;
 		case DATA_TYPE_NVLIST:
 			ret = nvlist_add_nvlist(payload, name,
@@ -1015,7 +710,7 @@ i_fm_payload_set(nvlist_t *payload, const char *name, va_list ap)
 		case DATA_TYPE_NVLIST_ARRAY:
 			nelem = va_arg(ap, int);
 			ret = nvlist_add_nvlist_array(payload, name,
-			    va_arg(ap, nvlist_t **), nelem);
+			    va_arg(ap, const nvlist_t **), nelem);
 			break;
 		default:
 			ret = EINVAL;
@@ -1171,8 +866,10 @@ fm_fmri_hc_set(nvlist_t *fmri, int version, const nvlist_t *auth,
 	}
 	va_end(ap);
 
-	if (nvlist_add_nvlist_array(fmri, FM_FMRI_HC_LIST, pairs, npairs) != 0)
+	if (nvlist_add_nvlist_array(fmri, FM_FMRI_HC_LIST,
+	    (const nvlist_t **)pairs, npairs) != 0) {
 		atomic_inc_64(&erpt_kstat_data.fmri_set_failed.value.ui64);
+	}
 
 	for (i = 0; i < npairs; i++)
 		fm_nvlist_destroy(pairs[i], FM_NVA_RETAIN);
@@ -1195,7 +892,7 @@ fm_fmri_hc_create(nvlist_t *fmri, int version, const nvlist_t *auth,
 	uint_t n;
 	int i, j;
 	va_list ap;
-	char *hcname, *hcid;
+	const char *hcname, *hcid;
 
 	if (!fm_fmri_hc_set_common(fmri, version, auth))
 		return;
@@ -1257,6 +954,7 @@ fm_fmri_hc_create(nvlist_t *fmri, int version, const nvlist_t *auth,
 			}
 			atomic_inc_64(
 			    &erpt_kstat_data.fmri_set_failed.value.ui64);
+			va_end(ap);
 			return;
 		}
 	}
@@ -1265,8 +963,8 @@ fm_fmri_hc_create(nvlist_t *fmri, int version, const nvlist_t *auth,
 	/*
 	 * Create the fmri hc list
 	 */
-	if (nvlist_add_nvlist_array(fmri, FM_FMRI_HC_LIST, pairs,
-	    npairs + n) != 0) {
+	if (nvlist_add_nvlist_array(fmri, FM_FMRI_HC_LIST,
+	    (const nvlist_t **)pairs, npairs + n) != 0) {
 		atomic_inc_64(&erpt_kstat_data.fmri_set_failed.value.ui64);
 		return;
 	}
@@ -1432,7 +1130,7 @@ fm_fmri_mem_set(nvlist_t *fmri, int version, const nvlist_t *auth,
 
 	if (serial != NULL) {
 		if (nvlist_add_string_array(fmri, FM_FMRI_MEM_SERIAL_ID,
-		    (char **)&serial, 1) != 0) {
+		    (const char **)&serial, 1) != 0) {
 			atomic_inc_64(
 			    &erpt_kstat_data.fmri_set_failed.value.ui64);
 		}
@@ -1614,17 +1312,12 @@ fm_erpt_dropped_increment(void)
 {
 	atomic_inc_64(&ratelimit_dropped);
 }
-#endif
 
-#ifdef _KERNEL
 void
 fm_init(void)
 {
 	zevent_len_cur = 0;
 	zevent_flags = 0;
-
-	if (zfs_zevent_len_max == 0)
-		zfs_zevent_len_max = ERPT_MAX_ERRS * MAX(max_ncpus, 4);
 
 	/* Initialize zevent allocation and generation kstats */
 	fm_ksp = kstat_create("zfs", 0, "fm", "misc", KSTAT_TYPE_NAMED,
@@ -1642,12 +1335,16 @@ fm_init(void)
 	list_create(&zevent_list, sizeof (zevent_t),
 	    offsetof(zevent_t, ev_node));
 	cv_init(&zevent_cv, NULL, CV_DEFAULT, NULL);
+
+	zfs_ereport_init();
 }
 
 void
 fm_fini(void)
 {
-	int count;
+	uint_t count;
+
+	zfs_ereport_fini();
 
 	zfs_zevent_drain_all(&count);
 
@@ -1657,7 +1354,7 @@ fm_fini(void)
 	zevent_flags |= ZEVENT_SHUTDOWN;
 	while (zevent_waiters > 0) {
 		mutex_exit(&zevent_lock);
-		schedule();
+		kpreempt(KPREEMPT_SYNC);
 		mutex_enter(&zevent_lock);
 	}
 	mutex_exit(&zevent_lock);
@@ -1671,14 +1368,7 @@ fm_fini(void)
 		fm_ksp = NULL;
 	}
 }
-
-module_param(zfs_zevent_len_max, int, 0644);
-MODULE_PARM_DESC(zfs_zevent_len_max, "Max event queue length");
-
-module_param(zfs_zevent_cols, int, 0644);
-MODULE_PARM_DESC(zfs_zevent_cols, "Max event column width");
-
-module_param(zfs_zevent_console, int, 0644);
-MODULE_PARM_DESC(zfs_zevent_console, "Log events to the console");
-
 #endif /* _KERNEL */
+
+ZFS_MODULE_PARAM(zfs_zevent, zfs_zevent_, len_max, UINT, ZMOD_RW,
+	"Max event queue length");

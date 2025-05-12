@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -7,7 +8,7 @@
 # You may not use this file except in compliance with the License.
 #
 # You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
+# or https://opensource.org/licenses/CDDL-1.0.
 # See the License for the specific language governing permissions
 # and limitations under the License.
 #
@@ -40,7 +41,7 @@
 # 1. Create a pool & dataset
 # 2. Call readmmap binary
 # 3. unmount this file system
-# 4. Verify the integrity of this pool & dateset
+# 4. Verify the integrity of this pool & dataset
 #
 
 verify_runnable "global"

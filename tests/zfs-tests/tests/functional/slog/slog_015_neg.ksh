@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # This file and its contents are supplied under the terms of the
 # Common Development and Distribution License ("CDDL"), version 1.0.
@@ -26,10 +27,12 @@
 #	3. Concurrently do the following:
 #	   3.1. Perform 8K sync writes
 #	   3.2. Perform log offline/online commands
-#	4. Loop to test with growing "zfs_commit_timout_pct" values.
+#	4. Loop to test with growing "zfs_commit_timeout_pct" values.
 #
 
 verify_runnable "global"
+
+command -v fio > /dev/null || log_unsupported "fio missing"
 
 function cleanup
 {
@@ -40,16 +43,17 @@ function cleanup
 	#
 	wait
 
-	set_tunable64 zfs_commit_timeout_pct $ORIG_TIMEOUT
+	set_tunable64 COMMIT_TIMEOUT_PCT $ORIG_TIMEOUT
 
 	poolexists $TESTPOOL && zpool destroy -f $TESTPOOL
 }
 
-ORIG_TIMEOUT=$(get_tunable zfs_commit_timeout_pct | tail -1 | awk '{print $NF}')
+typeset ORIG_TIMEOUT=$(get_tunable COMMIT_TIMEOUT_PCT)
 log_onexit cleanup
+log_must setup
 
 for PCT in 0 1 2 4 8 16 32 64 128 256 512 1024; do
-	log_must set_tunable64 zfs_commit_timeout_pct $PCT
+	log_must set_tunable64 COMMIT_TIMEOUT_PCT $PCT
 
 	log_must zpool create $TESTPOOL $VDEV log $SDEV
 

@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -7,7 +8,7 @@
 # You may not use this file except in compliance with the License.
 #
 # You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
+# or https://opensource.org/licenses/CDDL-1.0.
 # See the License for the specific language governing permissions
 # and limitations under the License.
 #
@@ -49,7 +50,11 @@ log_must rm $TESTDIR/ulimit_write_file $TESTDIR/ulimit_trunc_file
 # Verify 'ulimit -f <size>' works
 log_must ulimit -f 1024
 log_mustnot sh -c 'dd if=/dev/zero of=$TESTDIR/ulimit_write_file bs=1M count=2'
-log_mustnot sh -c 'truncate -s2M $TESTDIR/ulimit_trunc_file'
-log_must rm $TESTDIR/ulimit_write_file $TESTDIR/ulimit_trunc_file
+log_must rm $TESTDIR/ulimit_write_file
+# FreeBSD allows the sparse file because space has not been allocated.
+if ! is_freebsd; then
+	log_mustnot sh -c 'truncate -s2M $TESTDIR/ulimit_trunc_file'
+	log_must rm $TESTDIR/ulimit_trunc_file
+fi
 
 log_pass "Successfully enforced 'ulimit -f' maximum file size"

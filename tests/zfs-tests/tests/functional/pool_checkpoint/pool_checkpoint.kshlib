@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: CDDL-1.0
 #
 # This file and its contents are supplied under the terms of the
 # Common Development and Distribution License ("CDDL"), version 1.0.
@@ -27,7 +28,7 @@
 # This is why these tests run directly on pools that use a
 # "real disk vdev" (meaning not a file based one). These tests
 # use the $TESTPOOL pool that is created on top of $TESTDISK.
-# This pool is refered to as the "test pool" and thus all
+# This pool is referred to as the "test pool" and thus all
 # the tests of this group use the testpool-related functions of
 # this file (not the nested_pools ones).
 #
@@ -138,7 +139,8 @@ function setup_nested_pool
 	log_must truncate -s $DISKSIZE $FILEDISK1
 	log_must truncate -s $DISKSIZE $FILEDISK2
 
-	log_must zpool create -O sync=disabled $NESTEDPOOL $FILEDISKS
+	log_must zpool create -O primarycache=metadata -O sync=disabled \
+	    $NESTEDPOOL $FILEDISKS
 }
 
 function setup_test_pool
@@ -154,13 +156,18 @@ function setup_nested_pools
 
 function cleanup_nested_pool
 {
-	log_must zpool destroy $NESTEDPOOL
+	if poolexists $NESTEDPOOL; then
+		log_must zpool destroy $NESTEDPOOL
+	fi
+
 	log_must rm -f $FILEDISKS
 }
 
 function cleanup_test_pool
 {
-	log_must zpool destroy $TESTPOOL
+	if poolexists $TESTPOOL; then
+		log_must zpool destroy $TESTPOOL
+	fi
 
 	#
 	# We always clear the labels of all disks
@@ -324,8 +331,19 @@ function fragment_after_checkpoint_and_verify
 	#
 	log_must zpool list -v
 
-	log_must zdb $NESTEDPOOL
-	log_must zdb -kc $NESTEDPOOL
+	#
+	# Typically we would just run zdb at this point and things
+	# would be fine. Unfortunately, if there is still any
+	# background I/O in the pool the zdb command can fail with
+	# checksum errors temporarily.
+	#
+	# Export the pool when running zdb so the pool is idle and
+	# the verification results are consistent.
+	#
+	log_must zpool export $NESTEDPOOL
+	log_must zdb -e -p $FILEDISKDIR $NESTEDPOOL
+	log_must zdb -e -p $FILEDISKDIR -kc $NESTEDPOOL
+	log_must zpool import -d $FILEDISKDIR $NESTEDPOOL
 }
 
 function wait_discard_finish

@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # This file and its contents are supplied under the terms of the
 # Common Development and Distribution License ("CDDL"), version 1.0.
@@ -15,6 +16,7 @@
 #
 
 . $STF_SUITE/include/libtest.shlib
+. $STF_SUITE/tests/functional/cli_root/zpool_split/zpool_split.cfg
 
 #
 # DESCRIPTION:
@@ -40,7 +42,7 @@ verify_runnable "both"
 
 function cleanup
 {
-	log_must zinject -c all
+	log_must set_tunable32 SCAN_SUSPEND_PROGRESS 0
 	destroy_pool $TESTPOOL
 	destroy_pool $TESTPOOL2
 	rm -f $DEVICE1 $DEVICE2
@@ -65,12 +67,10 @@ function zpool_split #disk_to_be_offline/online
 	# Create 2G of additional data
 	mntpnt=$(get_prop mountpoint $TESTPOOL)
 	log_must file_write -b 2097152 -c 1024 -o create -d 0 -f $mntpnt/biggerfile
-	log_must sync
+	sync_all_pools
 
-	# slow-down resilvering, so it will not finish too early
-	log_must set_tunable64 zfs_scan_vdev_limit $ZFS_SCAN_VDEV_LIMIT_SLOW
-	log_must zinject -d $DEVICE1 -D 50:1 $TESTPOOL
-	log_must zinject -d $DEVICE2 -D 50:1 $TESTPOOL
+	# temporarily prevent resilvering progress, so it will not finish too early
+	log_must set_tunable32 SCAN_SUSPEND_PROGRESS 1
 
 	log_must zpool online $TESTPOOL $disk
 
@@ -85,7 +85,7 @@ function zpool_split #disk_to_be_offline/online
 
 	log_mustnot zpool split $TESTPOOL $TESTPOOL2
 
-	log_must set_tunable64 zfs_scan_vdev_limit $ZFS_SCAN_VDEV_LIMIT_DEFAULT
+	log_must set_tunable32 SCAN_SUSPEND_PROGRESS 0
 }
 
 log_assert "Verify 'zpool split' will fail if resilver in progress for a disk"
@@ -95,15 +95,12 @@ DEVSIZE='3g'
 DEVICE1="$TEST_BASE_DIR/device-1"
 DEVICE2="$TEST_BASE_DIR/device-2"
 
-ZFS_SCAN_VDEV_LIMIT_SLOW=$((128*1024))
-ZFS_SCAN_VDEV_LIMIT_DEFAULT=$(get_tunable zfs_scan_vdev_limit)
-
-log_note "Verify ZFS prevents main pool curruption during 'split'"
+log_note "Verify ZFS prevents main pool corruption during 'split'"
 zpool_split $DEVICE1
 
 cleanup
 
-log_note "Verify ZFS prevents new pool curruption during 'split'"
+log_note "Verify ZFS prevents new pool corruption during 'split'"
 zpool_split $DEVICE2
 
 log_pass "'zpool split' failed as expected"

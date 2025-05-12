@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -7,7 +8,7 @@
 # You may not use this file except in compliance with the License.
 #
 # You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
+# or https://opensource.org/licenses/CDDL-1.0.
 # See the License for the specific language governing permissions
 # and limitations under the License.
 #
@@ -33,18 +34,5 @@
 . $STF_SUITE/tests/functional/slog/slog.cfg
 
 verify_runnable "global"
-
-if ! verify_slog_support ; then
-	log_unsupported "This system doesn't support separate intent logs"
-fi
-
-if [[ -d $VDEV ]]; then
-	log_must rm -rf $VDIR
-fi
-if [[ -d $VDEV2 ]]; then
-	log_must rm -rf $VDIR2
-fi
-log_must mkdir -p $VDIR $VDIR2
-log_must truncate -s $MINVDEVSIZE $VDEV $SDEV $LDEV $VDEV2 $SDEV2 $LDEV2
 
 log_pass

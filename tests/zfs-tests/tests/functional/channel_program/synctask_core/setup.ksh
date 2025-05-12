@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # This file and its contents are supplied under the terms of the
 # Common Development and Distribution License ("CDDL"), version 1.0.
@@ -18,4 +19,8 @@
 
 DISK=${DISKS%% *}
 
-default_setup ${DISK}
+TESTPOOLDISK=${DISKS%% *}
+TESTPOOL2DISK=${DISKS##* }
+
+default_setup ${TESTPOOLDISK}
+create_pool testpool2 ${TESTPOOL2DISK}

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -6,7 +7,7 @@
 # You may not use this file except in compliance with the License.
 #
 # You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
+# or https://opensource.org/licenses/CDDL-1.0.
 # See the License for the specific language governing permissions
 # and limitations under the License.
 #
@@ -47,6 +48,9 @@ function check_atime_updated
 	if is_linux; then
 		typeset before=$(stat -c %X $filename)
 		sleep 2
+	elif is_freebsd; then
+		typeset before=$(stat -f %a $filename)
+		sleep 2
 	else
 		typeset before=$(ls -Eu $filename | awk '{print $7}')
 	fi
@@ -55,6 +59,8 @@ function check_atime_updated
 
 	if is_linux; then
 		typeset after=$(stat -c %X $filename)
+	elif is_freebsd; then
+		typeset after=$(stat -f %a $filename)
 	else
 		typeset after=$(ls -Eu $filename | awk '{print $7}')
 	fi
@@ -68,11 +74,26 @@ function check_atime_updated
 
 function setup_snap_clone
 {
-	# Create two file to verify snapshot.
-	log_must touch $TESTDIR/$TESTFILE
+	if [ -d "/$TESTPOOL/$TESTFS" ]; then
+		# No mountpoint case (default).
+		log_must touch /$TESTPOOL/$TESTFS/$TESTFILE
+	else
+		# Create two file to verify snapshot.
+		log_must touch $TESTDIR/$TESTFILE
+	fi
 
 	create_snapshot $TESTPOOL/$TESTFS $TESTSNAP
 	create_clone $TESTPOOL/$TESTFS@$TESTSNAP $TESTPOOL/$TESTCLONE
+}
+
+function reset_atime
+{
+	zfs inherit atime $TESTPOOL
+	zfs inherit atime $TESTPOOL/$TESTFS
+	zfs inherit atime $TESTPOOL/$TESTCLONE
+	zfs inherit relatime $TESTPOOL
+	zfs inherit relatime $TESTPOOL/$TESTFS
+	zfs inherit relatime $TESTPOOL/$TESTCLONE
 }
 
 function cleanup

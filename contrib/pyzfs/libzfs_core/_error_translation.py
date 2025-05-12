@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 #
 # Copyright 2015 ClusterHQ
 #
@@ -26,18 +27,25 @@ corresponding interface functions.
 
 The parameters and exceptions are documented in the `libzfs_core` interfaces.
 """
+from __future__ import absolute_import, division, print_function
 
 import errno
 import re
 import string
 from . import exceptions as lzc_exc
 from ._constants import (
+    ECHRNG,
+    ECKSUM,
+    ETIME,
     MAXNAMELEN,
     ZFS_ERR_CHECKPOINT_EXISTS,
     ZFS_ERR_DISCARDING_CHECKPOINT,
     ZFS_ERR_NO_CHECKPOINT,
     ZFS_ERR_DEVRM_IN_PROGRESS,
-    ZFS_ERR_VDEV_TOO_BIG
+    ZFS_ERR_VDEV_TOO_BIG,
+    ZFS_ERR_WRONG_PARENT,
+    ZFS_ERR_RAIDZ_EXPAND_IN_PROGRESS,
+    zfs_errno
 )
 
 
@@ -45,13 +53,16 @@ def lzc_create_translate_error(ret, name, ds_type, props):
     if ret == 0:
         return
     if ret == errno.EINVAL:
-        # XXX: should raise lzc_exc.WrongParent if parent is ZVOL
         _validate_fs_name(name)
         raise lzc_exc.PropertyInvalid(name)
     if ret == errno.EEXIST:
         raise lzc_exc.FilesystemExists(name)
     if ret == errno.ENOENT:
         raise lzc_exc.ParentNotFound(name)
+    if ret == ZFS_ERR_WRONG_PARENT:
+        raise lzc_exc.WrongParent(_fs_name(name))
+    if ret == zfs_errno.ZFS_ERR_BADPROP:
+        raise lzc_exc.PropertyInvalid(name)
     raise _generic_exception(ret, name, "Failed to create filesystem")
 
 
@@ -102,8 +113,9 @@ def lzc_snapshot_translate_errors(ret, errlist, snaps, props):
 
     def _map(ret, name):
         if ret == errno.EXDEV:
-            pool_names = map(_pool_name, snaps)
-            same_pool = all(x == pool_names[0] for x in pool_names)
+            pool_names = iter(map(_pool_name, snaps))
+            pool_name = next(pool_names, None)
+            same_pool = all(x == pool_name for x in pool_names)
             if same_pool:
                 return lzc_exc.DuplicateSnapshots(name)
             else:
@@ -143,21 +155,36 @@ def lzc_destroy_snaps_translate_errors(ret, errlist, snaps, defer):
 
 
 def lzc_bookmark_translate_errors(ret, errlist, bookmarks):
+
     if ret == 0:
         return
 
     def _map(ret, name):
+        source = bookmarks[name]
         if ret == errno.EINVAL:
             if name:
-                snap = bookmarks[name]
                 pool_names = map(_pool_name, bookmarks.keys())
-                if not _is_valid_bmark_name(name):
-                    return lzc_exc.BookmarkNameInvalid(name)
-                elif not _is_valid_snap_name(snap):
-                    return lzc_exc.SnapshotNameInvalid(snap)
-                elif _fs_name(name) != _fs_name(snap):
-                    return lzc_exc.BookmarkMismatch(name)
-                elif any(x != _pool_name(name) for x in pool_names):
+
+                # use _validate* functions for MAXNAMELEN check
+                try:
+                    _validate_bmark_name(name)
+                except lzc_exc.ZFSError as e:
+                    return e
+
+                try:
+                    _validate_snap_name(source)
+                    source_is_snap = True
+                except lzc_exc.ZFSError:
+                    source_is_snap = False
+                try:
+                    _validate_bmark_name(source)
+                    source_is_bmark = True
+                except lzc_exc.ZFSError:
+                    source_is_bmark = False
+                if not source_is_snap and not source_is_bmark:
+                    return lzc_exc.BookmarkSourceInvalid(source)
+
+                if any(x != _pool_name(name) for x in pool_names):
                     return lzc_exc.PoolsDiffer(name)
             else:
                 invalid_names = [
@@ -170,6 +197,8 @@ def lzc_bookmark_translate_errors(ret, errlist, bookmarks):
             return lzc_exc.SnapshotNotFound(name)
         if ret == errno.ENOTSUP:
             return lzc_exc.BookmarkNotSupported(name)
+        if ret == zfs_errno.ZFS_ERR_BOOKMARK_SOURCE_NOT_ANCESTOR:
+            return lzc_exc.BookmarkMismatch(source)
         return _generic_exception(ret, name, "Failed to create bookmark")
 
     _handle_err_list(
@@ -270,7 +299,8 @@ def lzc_hold_translate_errors(ret, errlist, holds, fd):
 def lzc_release_translate_errors(ret, errlist, holds):
     if ret == 0:
         return
-    for _, hold_list in holds.iteritems():
+    for snap in holds:
+        hold_list = holds[snap]
         if not isinstance(hold_list, list):
             raise lzc_exc.TypeError('holds must be in a list')
 
@@ -394,6 +424,8 @@ def lzc_receive_translate_errors(
             def _map(ret, name):
                 if ret == errno.EINVAL:
                     return lzc_exc.PropertyInvalid(name)
+                if ret == zfs_errno.ZFS_ERR_BADPROP:
+                    return lzc_exc.PropertyInvalid(name)
                 return _generic_exception(ret, name, "Failed to set property")
             _handle_err_list(
                 errno.EINVAL, properrs, [snapname],
@@ -439,8 +471,16 @@ def lzc_receive_translate_errors(
         raise lzc_exc.ReadOnlyPool(_pool_name(snapname))
     if ret == errno.EAGAIN:
         raise lzc_exc.SuspendedPool(_pool_name(snapname))
-    if ret == errno.EBADE:  # ECKSUM
+    if ret == errno.EACCES:
+        raise lzc_exc.EncryptionKeyNotLoaded()
+    if ret == ECKSUM:
         raise lzc_exc.BadStream()
+    if ret == ZFS_ERR_WRONG_PARENT:
+        raise lzc_exc.WrongParent(_fs_name(snapname))
+    if ret == zfs_errno.ZFS_ERR_STREAM_TRUNCATED:
+        raise lzc_exc.StreamTruncated()
+    if ret == zfs_errno.ZFS_ERR_BADPROP:
+        raise lzc_exc.PropertyInvalid(snapname)
 
     raise lzc_exc.StreamIOError(ret)
 
@@ -525,7 +565,7 @@ def lzc_channel_program_translate_error(ret, name, error):
         return
     if ret == errno.ENOENT:
         raise lzc_exc.PoolNotFound(name)
-    if ret == errno.ETIME:
+    if ret == ETIME:
         raise lzc_exc.ZCPTimeout()
     if ret == errno.ENOMEM:
         raise lzc_exc.ZCPMemoryError()
@@ -533,7 +573,7 @@ def lzc_channel_program_translate_error(ret, name, error):
         raise lzc_exc.ZCPSpaceError()
     if ret == errno.EPERM:
         raise lzc_exc.ZCPPermissionError()
-    if ret == errno.ECHRNG:
+    if ret == ECHRNG:
         raise lzc_exc.ZCPRuntimeError(error)
     if ret == errno.EINVAL:
         if error is None:
@@ -541,18 +581,6 @@ def lzc_channel_program_translate_error(ret, name, error):
         else:
             raise lzc_exc.ZCPSyntaxError(error)
     raise _generic_exception(ret, name, "Failed to execute channel program")
-
-
-def lzc_remap_translate_error(ret, name):
-    if ret == 0:
-        return
-    if ret == errno.ENOENT:
-        raise lzc_exc.DatasetNotFound(name)
-    if ret == errno.EINVAL:
-        _validate_fs_name(name)
-    if ret == errno.ENOTSUP:
-        return lzc_exc.FeatureNotSupported(name)
-    raise _generic_exception(ret, name, "Failed to remap dataset")
 
 
 def lzc_pool_checkpoint_translate_error(ret, name, discard=False):
@@ -570,6 +598,8 @@ def lzc_pool_checkpoint_translate_error(ret, name, discard=False):
         raise lzc_exc.DeviceRemovalRunning()
     if ret == ZFS_ERR_VDEV_TOO_BIG:
         raise lzc_exc.DeviceTooBig()
+    if ret == ZFS_ERR_RAIDZ_EXPAND_IN_PROGRESS:
+        raise lzc_exc.RaidzExpansionRunning()
     if discard:
         raise _generic_exception(
             ret, name, "Failed to discard pool checkpoint")
@@ -593,6 +623,8 @@ def lzc_rename_translate_error(ret, source, target):
         raise lzc_exc.FilesystemExists(target)
     if ret == errno.ENOENT:
         raise lzc_exc.FilesystemNotFound(source)
+    if ret == ZFS_ERR_WRONG_PARENT:
+        raise lzc_exc.WrongParent(target)
     raise _generic_exception(ret, source, "Failed to rename dataset")
 
 
@@ -705,15 +737,17 @@ def _handle_err_list(ret, errlist, names, exception, mapper):
 
     if len(errlist) == 0:
         suppressed_count = 0
+        names = list(zip(names, range(2)))
         if len(names) == 1:
-            name = names[0]
+            name, _ = names[0]
         else:
             name = None
         errors = [mapper(ret, name)]
     else:
         errors = []
         suppressed_count = errlist.pop('N_MORE_ERRORS', 0)
-        for name, err in errlist.iteritems():
+        for name in errlist:
+            err = errlist[name]
             errors.append(mapper(err, name))
 
     raise exception(errors, suppressed_count)
@@ -727,7 +761,7 @@ def _pool_name(name):
     '@' separates a snapshot name from the rest of the dataset name.
     '#' separates a bookmark name from the rest of the dataset name.
     '''
-    return re.split('[/@#]', name, 1)[0]
+    return re.split(b'[/@#]', name, 1)[0]
 
 
 def _fs_name(name):
@@ -737,26 +771,26 @@ def _fs_name(name):
     '@' separates a snapshot name from the rest of the dataset name.
     '#' separates a bookmark name from the rest of the dataset name.
     '''
-    return re.split('[@#]', name, 1)[0]
+    return re.split(b'[@#]', name, 1)[0]
 
 
 def _is_valid_name_component(component):
-    allowed = string.ascii_letters + string.digits + '-_.: '
-    return component and all(x in allowed for x in component)
+    allowed = string.ascii_letters + string.digits + u'-_.: '
+    return component and all(x in allowed.encode() for x in component)
 
 
 def _is_valid_fs_name(name):
-    return name and all(_is_valid_name_component(c) for c in name.split('/'))
+    return name and all(_is_valid_name_component(c) for c in name.split(b'/'))
 
 
 def _is_valid_snap_name(name):
-    parts = name.split('@')
+    parts = name.split(b'@')
     return (len(parts) == 2 and _is_valid_fs_name(parts[0]) and
             _is_valid_name_component(parts[1]))
 
 
 def _is_valid_bmark_name(name):
-    parts = name.split('#')
+    parts = name.split(b'#')
     return (len(parts) == 2 and _is_valid_fs_name(parts[0]) and
             _is_valid_name_component(parts[1]))
 

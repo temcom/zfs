@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: CDDL-1.0
 /*
  * CDDL HEADER START
  *
@@ -6,7 +7,7 @@
  * You may not use this file except in compliance with the License.
  *
  * You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
- * or http://www.opensolaris.org/os/licensing.
+ * or https://opensource.org/licenses/CDDL-1.0.
  * See the License for the specific language governing permissions
  * and limitations under the License.
  *
@@ -24,11 +25,12 @@
 
 #if defined(__x86_64) && defined(HAVE_PCLMULQDQ)
 
-#include <linux/simd_x86.h>
+#include <sys/types.h>
+#include <sys/simd.h>
+#include <sys/asm_linkage.h>
 
 /* These functions are used to execute pclmulqdq based assembly methods */
-extern void gcm_mul_pclmulqdq(uint64_t *, uint64_t *, uint64_t *);
-
+extern void ASMABI gcm_mul_pclmulqdq(uint64_t *, uint64_t *, uint64_t *);
 
 #include <modes/gcm_impl.h>
 
@@ -52,7 +54,7 @@ gcm_pclmulqdq_mul(uint64_t *x_in, uint64_t *y, uint64_t *res)
 static boolean_t
 gcm_pclmulqdq_will_work(void)
 {
-	return (zfs_pclmulqdq_available());
+	return (kfpu_allowed() && zfs_pclmulqdq_available());
 }
 
 const gcm_impl_ops_t gcm_pclmulqdq_impl = {

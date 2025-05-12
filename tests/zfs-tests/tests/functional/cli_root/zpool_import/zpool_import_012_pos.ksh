@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -7,7 +8,7 @@
 # You may not use this file except in compliance with the License.
 #
 # You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
+# or https://opensource.org/licenses/CDDL-1.0.
 # See the License for the specific language governing permissions
 # and limitations under the License.
 #
@@ -84,9 +85,9 @@ function cleanup
 
 	destroy_pool $TESTPOOL1
 
-	if datasetexists $TESTPOOL/$TESTFS; then
-		log_must zfs destroy -Rf $TESTPOOL/$TESTFS
-	fi
+	datasetexists $TESTPOOL/$TESTFS && \
+		destroy_dataset $TESTPOOL/$TESTFS -Rf
+
 	log_must zfs create $TESTPOOL/$TESTFS
 	log_must zfs set mountpoint=$TESTDIR $TESTPOOL/$TESTFS
 
@@ -138,7 +139,7 @@ for option in "" "-Df"; do
 				if ((nfs_share_bit == 1)); then
 					log_note "Set sharenfs=on $pool"
 					log_must zfs set sharenfs=on $pool
-					log_must is_shared $pool
+					! is_freebsd && log_must is_shared $pool
 					f_share="true"
 					nfs_flag="sharenfs=on"
 				fi
@@ -147,9 +148,9 @@ for option in "" "-Df"; do
 				while ((guid_bit <= 1)); do
 					typeset guid_flag="pool name"
 					if [[ -z $option ]]; then
-						log_must zpool export $pool
+						log_must_busy zpool export $pool
 					else
-						log_must zpool destroy $pool
+						log_must_busy zpool destroy $pool
 					fi
 
 					typeset target=$pool
@@ -165,10 +166,9 @@ for option in "" "-Df"; do
 					fi
 					log_note "Import with $nfs_flag and " \
 					    "$guid_flag"
-					zpool import $option ${devs[i]} \
-					    ${options[j]} $target
-					#import by GUID if import by pool name fails
-					if [[ $? != 0 ]]; then
+					if ! zpool import $option ${devs[i]} \
+					    ${options[j]} $target; then
+						# import by GUID if import by pool name fails
 						log_note "Possible pool name" \
 						    "duplicates. Try GUID import"
 						target=$guid
@@ -181,19 +181,21 @@ for option in "" "-Df"; do
 					for fs in $mount_fs; do
 						log_must ismounted $pool/$fs
 						[[ -n $f_share ]] && \
+						    ! is_freebsd && \
 						    log_must is_shared $pool/$fs
 					done
 
 					for fs in $nomount_fs; do
 						log_mustnot ismounted $pool/$fs
-						log_mustnot is_shared $pool/$fs
+						! is_freebsd && \
+						    log_mustnot is_shared $pool/$fs
 					done
 					((guid_bit = guid_bit + 1))
 				done
 				# reset nfsshare=off
 				if [[ -n $f_share ]]; then
 					log_must zfs set sharenfs=off $pool
-					log_mustnot is_shared $pool
+					! is_freebsd && log_mustnot is_shared $pool
 				fi
 				((nfs_share_bit = nfs_share_bit + 1))
 			done

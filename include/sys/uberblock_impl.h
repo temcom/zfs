@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: CDDL-1.0
 /*
  * CDDL HEADER START
  *
@@ -6,7 +7,7 @@
  * You may not use this file except in compliance with the License.
  *
  * You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
- * or http://www.opensolaris.org/os/licensing.
+ * or https://opensource.org/licenses/CDDL-1.0.
  * See the License for the specific language governing permissions
  * and limitations under the License.
  *
@@ -44,7 +45,69 @@ extern "C" {
  */
 #define	UBERBLOCK_MAGIC		0x00bab10c		/* oo-ba-bloc!	*/
 #define	UBERBLOCK_SHIFT		10			/* up to 1K	*/
-#define	MMP_MAGIC		0xa11cea11		/* all-see-all  */
+#define	MMP_MAGIC		0xa11cea11		/* all-see-all	*/
+
+#define	MMP_INTERVAL_VALID_BIT	0x01
+#define	MMP_SEQ_VALID_BIT	0x02
+#define	MMP_FAIL_INT_VALID_BIT	0x04
+
+#define	MMP_VALID(ubp)		((ubp)->ub_magic == UBERBLOCK_MAGIC && \
+				    (ubp)->ub_mmp_magic == MMP_MAGIC)
+#define	MMP_INTERVAL_VALID(ubp)	(MMP_VALID(ubp) && ((ubp)->ub_mmp_config & \
+				    MMP_INTERVAL_VALID_BIT))
+#define	MMP_SEQ_VALID(ubp)	(MMP_VALID(ubp) && ((ubp)->ub_mmp_config & \
+				    MMP_SEQ_VALID_BIT))
+#define	MMP_FAIL_INT_VALID(ubp)	(MMP_VALID(ubp) && ((ubp)->ub_mmp_config & \
+				    MMP_FAIL_INT_VALID_BIT))
+
+#define	MMP_INTERVAL(ubp)	(((ubp)->ub_mmp_config & 0x00000000FFFFFF00) \
+				    >> 8)
+#define	MMP_SEQ(ubp)		(((ubp)->ub_mmp_config & 0x0000FFFF00000000) \
+				    >> 32)
+#define	MMP_FAIL_INT(ubp)	(((ubp)->ub_mmp_config & 0xFFFF000000000000) \
+				    >> 48)
+
+#define	MMP_INTERVAL_SET(write) \
+	    (((uint64_t)(write & 0xFFFFFF) << 8) | MMP_INTERVAL_VALID_BIT)
+
+#define	MMP_SEQ_SET(seq) \
+	    (((uint64_t)(seq & 0xFFFF) << 32) | MMP_SEQ_VALID_BIT)
+
+#define	MMP_FAIL_INT_SET(fail) \
+	    (((uint64_t)(fail & 0xFFFF) << 48) | MMP_FAIL_INT_VALID_BIT)
+
+/*
+ * RAIDZ expansion reflow information.
+ *
+ *	64      56      48      40      32      24      16      8       0
+ *	+-------+-------+-------+-------+-------+-------+-------+-------+
+ *	|Scratch |                    Reflow                            |
+ *	| State  |                    Offset                            |
+ *	+-------+-------+-------+-------+-------+-------+-------+-------+
+ */
+typedef enum raidz_reflow_scratch_state {
+	RRSS_SCRATCH_NOT_IN_USE = 0,
+	RRSS_SCRATCH_VALID,
+	RRSS_SCRATCH_INVALID_SYNCED,
+	RRSS_SCRATCH_INVALID_SYNCED_ON_IMPORT,
+	RRSS_SCRATCH_INVALID_SYNCED_REFLOW
+} raidz_reflow_scratch_state_t;
+
+#define	RRSS_GET_OFFSET(ub) \
+	BF64_GET_SB((ub)->ub_raidz_reflow_info, 0, 55, SPA_MINBLOCKSHIFT, 0)
+#define	RRSS_SET_OFFSET(ub, x) \
+	BF64_SET_SB((ub)->ub_raidz_reflow_info, 0, 55, SPA_MINBLOCKSHIFT, 0, x)
+
+#define	RRSS_GET_STATE(ub) \
+	BF64_GET((ub)->ub_raidz_reflow_info, 55, 9)
+#define	RRSS_SET_STATE(ub, x) \
+	BF64_SET((ub)->ub_raidz_reflow_info, 55, 9, x)
+
+#define	RAIDZ_REFLOW_SET(ub, state, offset) do { \
+	(ub)->ub_raidz_reflow_info = 0; \
+	RRSS_SET_OFFSET(ub, offset); \
+	RRSS_SET_STATE(ub, state); \
+} while (0)
 
 struct uberblock {
 	uint64_t	ub_magic;	/* UBERBLOCK_MAGIC		*/
@@ -59,8 +122,31 @@ struct uberblock {
 
 	/* Maybe missing in uberblocks we read, but always written */
 	uint64_t	ub_mmp_magic;	/* MMP_MAGIC			*/
-	uint64_t	ub_mmp_delay;	/* nanosec since last MMP write	*/
-	uint64_t	ub_mmp_seq;	/* reserved for sequence number	*/
+	/*
+	 * If ub_mmp_delay == 0 and ub_mmp_magic is valid, MMP is off.
+	 * Otherwise, nanosec since last MMP write.
+	 */
+	uint64_t	ub_mmp_delay;
+
+	/*
+	 * The ub_mmp_config contains the multihost write interval, multihost
+	 * fail intervals, sequence number for sub-second granularity, and
+	 * valid bit mask.  This layout is as follows:
+	 *
+	 *   64      56      48      40      32      24      16      8       0
+	 *   +-------+-------+-------+-------+-------+-------+-------+-------+
+	 * 0 | Fail Intervals|      Seq      |   Write Interval (ms) | VALID |
+	 *   +-------+-------+-------+-------+-------+-------+-------+-------+
+	 *
+	 * This allows a write_interval of (2^24/1000)s, over 4.5 hours
+	 *
+	 * VALID Bits:
+	 * - 0x01 - Write Interval (ms)
+	 * - 0x02 - Sequence number exists
+	 * - 0x04 - Fail Intervals
+	 * - 0xf8 - Reserved
+	 */
+	uint64_t	ub_mmp_config;
 
 	/*
 	 * ub_checkpoint_txg indicates two things about the current uberblock:
@@ -80,10 +166,12 @@ struct uberblock {
 	 * pool from a checkpointed uberblock [see spa_ld_select_uberblock()],
 	 * the value of the field is used to determine which ZIL blocks have
 	 * been allocated according to the ms_sm when we are rewinding to a
-	 * checkpoint. Specifically, if blk_birth > ub_checkpoint_txg, then
+	 * checkpoint. Specifically, if logical birth > ub_checkpoint_txg,then
 	 * the ZIL block is not allocated [see uses of spa_min_claim_txg()].
 	 */
 	uint64_t	ub_checkpoint_txg;
+
+	uint64_t	ub_raidz_reflow_info;
 };
 
 #ifdef	__cplusplus

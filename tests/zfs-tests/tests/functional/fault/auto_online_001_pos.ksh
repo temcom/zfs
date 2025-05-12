@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -7,7 +8,7 @@
 # You may not use this file except in compliance with the License.
 #
 # You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
+# or https://opensource.org/licenses/CDDL-1.0.
 # See the License for the specific language governing permissions
 # and limitations under the License.
 #
@@ -21,6 +22,7 @@
 #
 #
 # Copyright (c) 2016, 2017 by Intel Corporation. All rights reserved.
+# Copyright (c) 2019 by Delphix. All rights reserved.
 #
 
 . $STF_SUITE/include/libtest.shlib
@@ -54,6 +56,15 @@ fi
 
 function cleanup
 {
+	typeset disk
+
+	# Replace any disk that may have been removed at failure time.
+	for disk in $DISK1 $DISK2 $DISK3; do
+		# Skip loop devices and devices that currently exist.
+		is_loop_device $disk && continue
+		is_real_device $disk && continue
+		insert_disk $disk $(get_scsi_host $disk)
+	done
 	destroy_pool $TESTPOOL
 	unload_scsi_debug
 }
@@ -104,10 +115,7 @@ do
 
 	# Reimport pool with drive missing
 	log_must zpool import $TESTPOOL
-	check_state $TESTPOOL "" "degraded"
-	if (($? != 0)); then
-		log_fail "$TESTPOOL is not degraded"
-	fi
+	log_must check_state $TESTPOOL "" "degraded"
 
 	# Clear zpool events
 	log_must zpool events -c
@@ -119,14 +127,13 @@ do
 	typeset -i timeout=0
 	while true; do
 		if ((timeout == $MAXTIMEOUT)); then
-			log_fail "Timeout occured"
+			log_fail "Timeout occurred"
 		fi
 		((timeout++))
 
 		sleep 1
-		zpool events $TESTPOOL \
-		    | egrep sysevent.fs.zfs.resilver_finish > /dev/null
-		if (($? == 0)); then
+		if zpool events $TESTPOOL \
+		    | grep -qF sysevent.fs.zfs.resilver_finish; then
 			log_note "Auto-online of $offline_disk is complete"
 			sleep 1
 			break
@@ -134,10 +141,7 @@ do
 	done
 
 	# Validate auto-online was successful
-	check_state $TESTPOOL "" "online"
-	if (($? != 0)); then
-		log_fail "$TESTPOOL is not back online"
-	fi
+	log_must check_state $TESTPOOL "" "online"
 	sleep 2
 done
 log_must zpool destroy $TESTPOOL

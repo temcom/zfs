@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 
 #
 # This file and its contents are supplied under the terms of the
@@ -23,7 +24,7 @@
 #
 # STRATEGY:
 #	1. Create a pool.
-#	2. Generate files and remember their md5sum.
+#	2. Generate files and remember their hashsum.
 #	3. Sync a few times and note last synced txg.
 #	4. Take a snapshot to make sure old blocks are not overwritten.
 #	5. Initiate device replacement and export the pool. Special care must
@@ -60,10 +61,10 @@ ZFS_TXG_TIMEOUT=""
 function custom_cleanup
 {
 	# Revert zfs_txg_timeout to defaults
-	[[ -n ZFS_TXG_TIMEOUT ]] &&
+	[[ -n $ZFS_TXG_TIMEOUT ]] &&
 	    log_must set_zfs_txg_timeout $ZFS_TXG_TIMEOUT
 	log_must rm -rf $BACKUP_DEVICE_DIR
-	zinject -c all
+	log_must set_tunable32 SCAN_SUSPEND_PROGRESS 0
 	cleanup
 }
 
@@ -98,22 +99,17 @@ function test_replace_vdev
 	# This should not free original data.
 	log_must overwrite_data $TESTPOOL1 ""
 
-	# Steps to insure resilvering happens very slowly.
 	log_must zpool export $TESTPOOL1
 	log_must zpool import -d $DEVICE_DIR $TESTPOOL1
-	typeset device
-	for device in $zinjectdevices ; do
-		log_must zinject -d $device -D 200:1 $TESTPOOL1 > /dev/null
-	done
+
+	# Ensure resilvering doesn't complete.
+	log_must set_tunable32 SCAN_SUSPEND_PROGRESS 1
 	log_must zpool replace $TESTPOOL1 $replacevdev $replaceby
 
-	# We must disable zinject in order to export the pool, so we freeze
-	# it first to prevent writing out subsequent resilvering progress.
-	log_must zpool freeze $TESTPOOL1
 	# Confirm pool is still replacing
 	log_must pool_is_replacing $TESTPOOL1
-	log_must zinject -c all > /dev/null
 	log_must zpool export $TESTPOOL1
+	log_must set_tunable32 SCAN_SUSPEND_PROGRESS 0
 
 	############################################################
 	# Test 1: rewind while device is resilvering.
@@ -122,7 +118,7 @@ function test_replace_vdev
 	log_must zpool import -d $DEVICE_DIR -o readonly=on -T $txg $TESTPOOL1
 	log_must check_pool_config $TESTPOOL1 "$poolcreate"
 
-	log_must verify_data_md5sums $MD5FILE
+	log_must verify_data_hashsums $MD5FILE
 
 	log_must zpool export $TESTPOOL1
 
@@ -142,7 +138,7 @@ function test_replace_vdev
 	log_must zpool import -d $DEVICE_DIR -T $txg $TESTPOOL1
 	log_must check_pool_config $TESTPOOL1 "$poolcreate"
 
-	log_must verify_data_md5sums $MD5FILE
+	log_must verify_data_hashsums $MD5FILE
 
 	# Cleanup
 	log_must zpool destroy $TESTPOOL1
@@ -156,7 +152,7 @@ function test_replace_vdev
 }
 
 # Record txg history
-is_linux && log_must set_tunable32 zfs_txg_history 100
+is_linux && log_must set_tunable32 TXG_HISTORY 100
 
 log_must mkdir -p $BACKUP_DEVICE_DIR
 # Make the devices bigger to reduce chances of overwriting MOS metadata.
@@ -180,6 +176,11 @@ test_replace_vdev "raidz $VDEV0 $VDEV1 $VDEV2" \
 	"$VDEV1" "$VDEV3" \
 	"raidz $VDEV0 $VDEV3 $VDEV2" \
 	"$VDEV0 $VDEV1 $VDEV2" 10
+
+test_replace_vdev "draid $VDEV0 $VDEV1 $VDEV2 $VDEV3" \
+	"$VDEV1" "$VDEV4" \
+	"draid $VDEV0 $VDEV4 $VDEV2 $VDEV3 spares draid1-0-0" \
+	"$VDEV0 $VDEV1 $VDEV2 $VDEV3" 10
 
 set_zfs_txg_timeout $ZFS_TXG_TIMEOUT
 

@@ -1,4 +1,4 @@
-/* BEGIN CSTYLED */
+// SPDX-License-Identifier: MIT
 /*
 ** $Id: lstate.c,v 2.99.1.2 2013/11/08 17:45:31 roberto Exp $
 ** Global State
@@ -214,6 +214,7 @@ static void preinit_state (lua_State *L, global_State *g) {
   L->nny = 1;
   L->status = LUA_OK;
   L->errfunc = 0;
+  L->runerror = 0;
 }
 
 
@@ -316,4 +317,3 @@ LUA_API void lua_close (lua_State *L) {
   lua_lock(L);
   close_state(L);
 }
-/* END CSTYLED */

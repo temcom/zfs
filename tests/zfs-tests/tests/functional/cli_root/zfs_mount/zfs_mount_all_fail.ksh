@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -16,6 +17,7 @@
 
 #
 # Copyright (c) 2017 by Delphix. All rights reserved.
+# Copyright 2024 MNX Cloud, Inc.
 #
 
 . $STF_SUITE/include/libtest.shlib
@@ -30,7 +32,8 @@
 #       1. Create zfs filesystems
 #       2. Unmount a leaf filesystem
 #       3. Create a file in the above filesystem's mountpoint
-#       4. Verify that 'zfs mount -a' fails to mount the above
+#       4. Verify that 'zfs mount -a' succeeds if overlay=on and
+#          fails to mount the above if overlay=off
 #       5. Verify that all other filesystems were mounted
 #
 
@@ -43,8 +46,9 @@ typeset fscount=10
 function setup_all
 {
 	# Create $fscount filesystems at the top level of $path
-	for ((i=0; i<$fscount; i++)); do
+	for ((i=0; i<fscount; i++)); do
 		setup_filesystem "$DISKS" "$TESTPOOL" $i "$path/$i" ctr
+		filesystems+=($i)
 	done
 
 	zfs list -r $TESTPOOL
@@ -57,6 +61,12 @@ function cleanup_all
 	export __ZFS_POOL_RESTRICT="$TESTPOOL"
 	log_must zfs $unmountall
 	unset __ZFS_POOL_RESTRICT
+	# make sure we leave $TESTPOOL mounted
+	log_must zfs mount $TESTPOOL
+
+	for fs in ${filesystems[@]}; do
+		cleanup_filesystem "$TESTPOOL" "$fs"
+	done
 
 	[[ -d ${TEST_BASE_DIR%%/}/testroot$$ ]] && \
 		rm -rf ${TEST_BASE_DIR%%/}/testroot$$
@@ -75,22 +85,30 @@ log_must zfs $unmountall
 unset __ZFS_POOL_RESTRICT
 
 # All of our filesystems should be unmounted at this point
-for ((i=0; i<$fscount; i++)); do
+for ((i=0; i<fscount; i++)); do
 	log_mustnot mounted "$TESTPOOL/$i"
 done
 
 # Create a stray file in one filesystem's mountpoint
 touch $path/0/strayfile
 
-# Verify that zfs mount -a fails
 export __ZFS_POOL_RESTRICT="$TESTPOOL"
+
+# Verify that zfs mount -a succeeds with overlay=on (default)
+log_must zfs $mountall
+log_must mounted "$TESTPOOL/0"
+log_must zfs $unmountall
+
+# Verify that zfs mount -a succeeds with overlay=off
+log_must zfs set overlay=off "$TESTPOOL/0"
 log_mustnot zfs $mountall
+log_mustnot mounted "$TESTPOOL/0"
+
 unset __ZFS_POOL_RESTRICT
 
-# All filesystems except for "0" should be mounted
-log_mustnot mounted "$TESTPOOL/0"
-for ((i=1; i<$fscount; i++)); do
+# All other filesystems should be mounted
+for ((i=1; i<fscount; i++)); do
 	log_must mounted "$TESTPOOL/$i"
 done
 
-log_pass "'zfs $mountall' failed as expected."
+log_pass "'zfs $mountall' behaves as expected."

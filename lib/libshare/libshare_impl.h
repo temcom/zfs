@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: CDDL-1.0
 /*
  * CDDL HEADER START
  *
@@ -6,7 +7,7 @@
  * You may not use this file except in compliance with the License.
  *
  * You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
- * or http://www.opensolaris.org/os/licensing.
+ * or https://opensource.org/licenses/CDDL-1.0.
  * See the License for the specific language governing permissions
  * and limitations under the License.
  *
@@ -22,49 +23,26 @@
 /*
  * Copyright (c) 2002, 2010, Oracle and/or its affiliates. All rights reserved.
  * Copyright (c) 2011 Gunnar Beutner
+ * Copyright (c) 2019, 2022 by Delphix. All rights reserved.
  */
+#ifndef _LIBSPL_LIBSHARE_IMPL_H
+#define	_LIBSPL_LIBSHARE_IMPL_H
 
-struct sa_handle_impl;
-
-typedef struct sa_share_fsinfo {
-	boolean_t active;
-	char *resource;
-	char *shareopts;
-} sa_share_fsinfo_t;
-
-typedef struct sa_share_impl {
-	struct sa_share_impl *next;
-
-	struct sa_handle_impl *handle;
-
-	char *sharepath;
-	char *dataset;
-
-	sa_share_fsinfo_t *fsinfo; /* per-fstype information */
+typedef const struct sa_share_impl {
+	const char *sa_zfsname;
+	const char *sa_mountpoint;
+	const char *sa_shareopts;
 } *sa_share_impl_t;
 
-#define	FSINFO(impl_share, fstype) (&(impl_share->fsinfo[fstype->fsinfo_index]))
-
-typedef struct sa_share_ops {
-	int (*enable_share)(sa_share_impl_t share);
-	int (*disable_share)(sa_share_impl_t share);
-	int (*validate_shareopts)(const char *shareopts);
-	int (*update_shareopts)(sa_share_impl_t impl_share,
-	    const char *resource, const char *shareopts);
-	void (*clear_shareopts)(sa_share_impl_t impl_share);
-} sa_share_ops_t;
-
-typedef struct sa_fstype {
-	struct sa_fstype *next;
-
-	const char *name;
-	const sa_share_ops_t *ops;
-	int fsinfo_index;
+typedef struct {
+	int (*const enable_share)(sa_share_impl_t share);
+	int (*const disable_share)(sa_share_impl_t share);
+	boolean_t (*const is_shared)(sa_share_impl_t share);
+	int (*const validate_shareopts)(const char *shareopts);
+	int (*const commit_shares)(void);
+	void (*const truncate_shares)(void);
 } sa_fstype_t;
 
-typedef struct sa_handle_impl {
-	libzfs_handle_t *zfs_libhandle;
-	sa_share_impl_t shares;
-} *sa_handle_impl_t;
+extern const sa_fstype_t libshare_nfs_type, libshare_smb_type;
 
-sa_fstype_t *register_fstype(const char *name, const sa_share_ops_t *ops);
+#endif /* _LIBSPL_LIBSHARE_IMPL_H */

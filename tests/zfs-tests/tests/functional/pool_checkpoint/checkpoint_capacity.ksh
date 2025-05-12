@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 
 #
 # This file and its contents are supplied under the terms of the
@@ -46,7 +47,7 @@
 function test_cleanup
 {
 	poolexists $NESTEDPOOL && destroy_pool $NESTEDPOOL
-	log_must set_tunable32 spa_asize_inflation 24
+	set_tunable32 SPA_ASIZE_INFLATION 24
 	cleanup_test_pool
 }
 
@@ -54,19 +55,20 @@ verify_runnable "global"
 
 setup_test_pool
 log_onexit test_cleanup
-log_must set_tunable32 spa_asize_inflation 4
+log_must set_tunable32 SPA_ASIZE_INFLATION 4
 
 log_must zfs create $DISKFS
 
 log_must mkfile $FILEDISKSIZE $FILEDISK1
-log_must zpool create $NESTEDPOOL $FILEDISK1
+log_must zpool create -O primarycache=metadata $NESTEDPOOL $FILEDISK1
 
-log_must zfs create -o compression=lz4 -o recordsize=8k $NESTEDFS0
+log_must zfs create $NESTEDFS0
 log_must dd if=/dev/urandom of=$NESTEDFS0FILE bs=1M count=700
 FILE0INTRO=$(head -c 100 $NESTEDFS0FILE)
 
 log_must zpool checkpoint $NESTEDPOOL
 log_must rm $NESTEDFS0FILE
+log_must sync_pool $NESTEDPOOL
 
 #
 # only for debugging purposes
@@ -80,13 +82,14 @@ log_mustnot dd if=/dev/urandom of=$NESTEDFS0FILE bs=1M count=300
 #
 log_must zpool list $NESTEDPOOL
 
-log_must zdb -kc $NESTEDPOOL
-
 log_must zpool export $NESTEDPOOL
+log_must zdb -e -p $FILEDISKDIR -kc $NESTEDPOOL
+
 log_must zpool import -d $FILEDISKDIR --rewind-to-checkpoint $NESTEDPOOL
 
 log_must [ "$(head -c 100 $NESTEDFS0FILE)" = "$FILE0INTRO" ]
 
-log_must zdb $NESTEDPOOL
+log_must zpool export $NESTEDPOOL
+log_must zdb -e -p $FILEDISKDIR $NESTEDPOOL
 
 log_pass "Do not reuse checkpointed space at low capacity."

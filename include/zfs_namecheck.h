@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: CDDL-1.0
 /*
  * CDDL HEADER START
  *
@@ -6,7 +7,7 @@
  * You may not use this file except in compliance with the License.
  *
  * You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
- * or http://www.opensolaris.org/os/licensing.
+ * or https://opensource.org/licenses/CDDL-1.0.
  * See the License for the specific language governing permissions
  * and limitations under the License.
  *
@@ -27,7 +28,7 @@
  */
 
 #ifndef	_ZFS_NAMECHECK_H
-#define	_ZFS_NAMECHECK_H
+#define	_ZFS_NAMECHECK_H extern __attribute__((visibility("default")))
 
 #ifdef	__cplusplus
 extern "C" {
@@ -43,21 +44,30 @@ typedef enum {
 	NAME_ERR_RESERVED,		/* entire name is reserved */
 	NAME_ERR_DISKLIKE,		/* reserved disk name (c[0-9].*) */
 	NAME_ERR_TOOLONG,		/* name is too long */
+	NAME_ERR_SELF_REF,		/* reserved self path name ('.') */
+	NAME_ERR_PARENT_REF,		/* reserved parent path name ('..') */
 	NAME_ERR_NO_AT,			/* permission set is missing '@' */
+	NAME_ERR_NO_POUND, 		/* permission set is missing '#' */
 } namecheck_err_t;
 
 #define	ZFS_PERMSET_MAXLEN	64
 
-extern int zfs_max_dataset_nesting;
+_ZFS_NAMECHECK_H int zfs_max_dataset_nesting;
 
-int get_dataset_depth(const char *);
-int pool_namecheck(const char *, namecheck_err_t *, char *);
-int entity_namecheck(const char *, namecheck_err_t *, char *);
-int dataset_namecheck(const char *, namecheck_err_t *, char *);
-int dataset_nestcheck(const char *);
-int mountpoint_namecheck(const char *, namecheck_err_t *);
-int zfs_component_namecheck(const char *, namecheck_err_t *, char *);
-int permset_namecheck(const char *, namecheck_err_t *, char *);
+_ZFS_NAMECHECK_H int get_dataset_depth(const char *);
+_ZFS_NAMECHECK_H int pool_namecheck(const char *, namecheck_err_t *, char *);
+_ZFS_NAMECHECK_H int entity_namecheck(const char *, namecheck_err_t *, char *);
+_ZFS_NAMECHECK_H int dataset_namecheck(const char *, namecheck_err_t *, char *);
+_ZFS_NAMECHECK_H int snapshot_namecheck(const char *, namecheck_err_t *,
+    char *);
+_ZFS_NAMECHECK_H int bookmark_namecheck(const char *, namecheck_err_t *,
+    char *);
+_ZFS_NAMECHECK_H int dataset_nestcheck(const char *);
+_ZFS_NAMECHECK_H int mountpoint_namecheck(const char *, namecheck_err_t *);
+_ZFS_NAMECHECK_H int zfs_component_namecheck(const char *, namecheck_err_t *,
+    char *);
+_ZFS_NAMECHECK_H int permset_namecheck(const char *, namecheck_err_t *,
+    char *);
 
 #ifdef	__cplusplus
 }

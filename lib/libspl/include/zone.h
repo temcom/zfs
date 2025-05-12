@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: CDDL-1.0
 /*
  * CDDL HEADER START
  *
@@ -6,7 +7,7 @@
  * You may not use this file except in compliance with the License.
  *
  * You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
- * or http://www.opensolaris.org/os/licensing.
+ * or https://opensource.org/licenses/CDDL-1.0.
  * See the License for the specific language governing permissions
  * and limitations under the License.
  *
@@ -26,25 +27,26 @@
 #ifndef _LIBSPL_ZONE_H
 #define	_LIBSPL_ZONE_H
 
-
-
 #include <sys/types.h>
 #include <sys/zone.h>
-#include <sys/priv.h>
 
 #ifdef	__cplusplus
 extern "C" {
 #endif
 
-#define	GLOBAL_ZONEID		0
-#define	GLOBAL_ZONEID_NAME	"global"
-
+#ifdef __FreeBSD__
+#define	GLOBAL_ZONEID	0
+#else
 /*
- * Functions for mapping between id and name for active zones.
+ * Hardcoded in the kernel's root user namespace.  A "better" way to get
+ * this would be by using ioctl_ns(2), but this would need to be performed
+ * recursively on NS_GET_PARENT and then NS_GET_USERNS.  Also, that's only
+ * supported since Linux 4.9.
  */
+#define	GLOBAL_ZONEID	4026531837U
+#endif
+
 extern zoneid_t		getzoneid(void);
-extern zoneid_t		getzoneidbyname(const char *);
-extern ssize_t		getzonenamebyid(zoneid_t, char *, size_t);
 
 #ifdef	__cplusplus
 }

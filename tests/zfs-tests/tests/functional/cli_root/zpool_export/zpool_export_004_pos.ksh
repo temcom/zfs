@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -7,7 +8,7 @@
 # You may not use this file except in compliance with the License.
 #
 # You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
+# or https://opensource.org/licenses/CDDL-1.0.
 # See the License for the specific language governing permissions
 # and limitations under the License.
 #
@@ -29,7 +30,7 @@
 # Copyright (c) 2012, 2016 by Delphix. All rights reserved.
 #
 
-. $STF_SUITE/include/libtest.shlib
+. $STF_SUITE/tests/functional/cli_root/zpool_export/zpool_export.kshlib
 
 #
 # DESCRIPTION:
@@ -50,25 +51,8 @@
 
 verify_runnable "global"
 
-function cleanup
-{
-	mntpnt=$TESTDIR0
-	datasetexists $TESTPOOL1 || log_must zpool import -d $mntpnt $TESTPOOL1
-	datasetexists $TESTPOOL1 && destroy_pool $TESTPOOL1
-	datasetexists $TESTPOOL2 && destroy_pool $TESTPOOL2
-	typeset -i i=0
-	while ((i < 5)); do
-		if [[ -e $mntpnt/vdev$i ]]; then
-			log_must rm -f $mntpnt/vdev$i
-		fi
-		((i += 1))
-	done
-	log_must rmdir $mntpnt
-}
-
-
 log_assert "Verify zpool export succeed or fail with spare."
-log_onexit cleanup
+log_onexit zpool_export_cleanup
 
 mntpnt=$TESTDIR0
 log_must mkdir -p $mntpnt

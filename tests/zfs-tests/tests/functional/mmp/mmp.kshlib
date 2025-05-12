@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -6,7 +7,7 @@
 # You may not use this file except in compliance with the License.
 #
 # You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
+# or https://opensource.org/licenses/CDDL-1.0.
 # See the License for the specific language governing permissions
 # and limitations under the License.
 #
@@ -36,10 +37,8 @@ function check_pool_import # pool opts token keyword
 	typeset keyword=$4
 
 	zpool import $opts 2>&1 | \
-	    nawk -v token="$token:" '($1==token) {print $0}' | \
-	    grep -i "$keyword" > /dev/null 2>&1
-
-	return $?
+	    awk -v token="$token:" '($1==token) {print}' | \
+	    grep -iq "$keyword"
 }
 
 function is_pool_imported # pool opts
@@ -49,7 +48,6 @@ function is_pool_imported # pool opts
 
 	check_pool_import "$pool" "$opts" "status" \
 	    "The pool is currently imported"
-	return $?
 }
 
 function wait_pool_imported # pool opts
@@ -60,8 +58,6 @@ function wait_pool_imported # pool opts
 	while is_pool_imported "$pool" "$opts"; do
 		log_must sleep 5
 	done
-
-	return 0
 }
 
 function try_pool_import # pool opts message
@@ -71,8 +67,6 @@ function try_pool_import # pool opts message
 	typeset msg=$3
 
 	zpool import $opts $pool 2>&1 | grep -i "$msg"
-
-	return $?
 }
 
 function mmp_set_hostid
@@ -81,11 +75,7 @@ function mmp_set_hostid
 
 	zgenhostid $1
 
-	if [ $(hostid) != "$hostid" ]; then
-		return 1
-	fi
-
-	return 0
+	[ $(hostid) = "$hostid" ]
 }
 
 function mmp_clear_hostid
@@ -163,51 +153,38 @@ function mmp_pool_set_hostid # pool hostid
 	return 0
 }
 
-# Return the number of seconds the activity check portion of the import process
-# will take.  Does not include the time to find devices and assemble the
-# preliminary pool configuration passed into the kernel.
-function seconds_mmp_waits_for_activity
-{
-	typeset import_intervals=$(get_tunable zfs_multihost_import_intervals)
-	typeset interval=$(get_tunable zfs_multihost_interval)
-	typeset seconds=$((interval*import_intervals/1000))
-
-	echo $seconds
-}
-
 function import_no_activity_check # pool opts
 {
 	typeset pool=$1
 	typeset opts=$2
 
-	typeset max_duration=$(seconds_mmp_waits_for_activity)
+	typeset max_duration=$((MMP_TEST_DURATION_DEFAULT-1))
 
 	SECONDS=0
 	zpool import $opts $pool
 	typeset rc=$?
 
 	if [[ $SECONDS -gt $max_duration ]]; then
-		log_fail "unexpected activity check (${SECONDS}s gt \
-$max_duration)"
+		log_fail "ERROR: import_no_activity_check unexpected activity \
+check (${SECONDS}s gt $max_duration)"
 	fi
 
 	return $rc
 }
 
-function import_activity_check # pool opts
+function import_activity_check # pool opts act_test_duration
 {
 	typeset pool=$1
 	typeset opts=$2
-
-	typeset min_duration=$(seconds_mmp_waits_for_activity)
+	typeset min_duration=${3:-$MMP_TEST_DURATION_DEFAULT}
 
 	SECONDS=0
 	zpool import $opts $pool
 	typeset rc=$?
 
 	if [[ $SECONDS -le $min_duration ]]; then
-		log_fail "expected activity check (${SECONDS}s le \
-$min_duration)"
+		log_fail "ERROR: import_activity_check expected activity check \
+(${SECONDS}s le min_duration $min_duration)"
 	fi
 
 	return $rc
@@ -215,26 +192,93 @@ $min_duration)"
 
 function clear_mmp_history
 {
-	log_must set_tunable64 zfs_multihost_history $MMP_HISTORY_OFF
-	log_must set_tunable64 zfs_multihost_history $MMP_HISTORY
+	log_must set_tunable64 MULTIHOST_HISTORY $MMP_HISTORY_OFF
+	log_must set_tunable64 MULTIHOST_HISTORY $MMP_HISTORY
 }
 
 function count_skipped_mmp_writes # pool duration
 {
 	typeset pool=$1
 	typeset -i duration=$2
-	typeset hist_path="/proc/spl/kstat/zfs/$pool/multihost"
 
 	sleep $duration
-	awk 'BEGIN {count=0}; $NF == "-" {count++}; END {print count};' "$hist_path"
+	kstat_pool $pool multihost | \
+	    awk 'BEGIN {count=0}; $NF == "-" {count++}; END {print count};'
 }
 
 function count_mmp_writes # pool duration
 {
 	typeset pool=$1
 	typeset -i duration=$2
-	typeset hist_path="/proc/spl/kstat/zfs/$pool/multihost"
 
 	sleep $duration
-	awk 'BEGIN {count=0}; $NF != "-" {count++}; END {print count};' "$hist_path"
+	kstat_pool $pool multihost | \
+	    awk 'BEGIN {count=0}; $NF != "-" {count++}; END {print count};'
+}
+
+function summarize_uberblock_mmp # device
+{
+	typeset device=$1
+
+	zdb -luuuu $device | awk '
+	BEGIN				{write_fail_present=0; write_fail_missing=0; uber_invalid=0;}
+	/Uberblock\[[0-9][0-9]*\]/	{delay=-99; write=-99; fail=-99; total++; if (/invalid/) {uber_invalid++};};
+	/mmp_fail/			{fail=$3};
+	/mmp_seq/			{seq=$3};
+	/mmp_write/			{write=$3};
+	/mmp_delay/			{delay=$3; if (delay==0) {delay_zero++};};
+	/mmp_valid/ && delay>0 && write>0 && fail>0 {write_fail_present++};
+	/mmp_valid/ && delay>0 && (write<=0 || fail<=0) {write_fail_missing++};
+	/mmp_valid/ && delay>0 && write<=0 {write_missing++};
+	/mmp_valid/ && delay>0 && fail<=0 {fail_missing++};
+	/mmp_valid/ && delay>0 && seq>0 {seq_nonzero++};
+	END {
+		print "total_uberblocks " total;
+		print "delay_zero " delay_zero;
+		print "write_fail_present " write_fail_present;
+		print "write_fail_missing " write_fail_missing;
+		print "write_missing " write_missing;
+		print "fail_missing " fail_missing;
+		print "seq_nonzero " seq_nonzero;
+		print "uberblock_invalid " uber_invalid;
+	}'
+}
+
+function count_mmp_write_fail_present # device
+{
+	typeset device=$1
+
+	summarize_uberblock_mmp $device | awk '/write_fail_present/ {print $NF}'
+}
+
+function count_mmp_write_fail_missing # device
+{
+	typeset device=$1
+
+	summarize_uberblock_mmp $device | awk '/write_fail_missing/ {print $NF}'
+}
+
+function verify_mmp_write_fail_present # device
+{
+	typeset device=$1
+
+	count=$(count_mmp_write_fail_present $device)
+	log_note "present count: $count"
+	if [ $count -eq 0 ]; then
+		summarize_uberblock_mmp $device
+		log_note "----- snip -----"
+		zdb -luuuu $device
+		log_note "----- snip -----"
+		log_fail "No Uberblocks contain valid mmp_write and fail values"
+	fi
+
+	count=$(count_mmp_write_fail_missing $device)
+	log_note "missing count: $count"
+	if [ $count -gt 0 ]; then
+		summarize_uberblock_mmp $device
+		log_note "----- snip -----"
+		zdb -luuuu $device
+		log_note "----- snip -----"
+		log_fail "Uberblocks missing mmp_write or mmp_fail"
+	fi
 }

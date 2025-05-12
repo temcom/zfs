@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -7,7 +8,7 @@
 # You may not use this file except in compliance with the License.
 #
 # You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
+# or https://opensource.org/licenses/CDDL-1.0.
 # See the License for the specific language governing permissions
 # and limitations under the License.
 #
@@ -44,8 +45,8 @@ verify_runnable "global"
 
 function cleanup
 {
-	destroy_pool $TESTPOOL
-	log_must rm -f $disk
+	poolexists $TESTPOOL && destroy_pool $TESTPOOL
+	rm -f $disk
 }
 
 #
@@ -59,8 +60,7 @@ function write_device_uberblocks # <device> <pool>
 	typeset device=$1
 	typeset pool=$2
 
-	while [ "$(zdb -quuul $device | grep -c 'invalid')" -ne 0 ]
-	do
+	while zdb -quuul $device | grep -q 'invalid'; do
 		sync_pool $pool true
 	done
 }
@@ -73,25 +73,28 @@ function verify_device_uberblocks # <device> <count>
 	typeset device=$1
 	typeset ubcount=$2
 
-	zdb -quuul $device | egrep '^(\s+)?Uberblock' |
-	    awk -v ubcount=$ubcount 'BEGIN { count=0 } { uberblocks[$0]++; }
+	zdb -quuul $device | awk -v ubcount=$ubcount '
+	    /Uberblock/ && ! /invalid/ { uberblocks[$0]++ }
 	    END {
+	        count = 0
 	        for (i in uberblocks) {
-	            if (i ~ /invalid/) { continue; }
-	            if (uberblocks[i] != 4) { exit 1; }
+	            if (uberblocks[i] != 4) {
+	                printf "%s count: %s != 4\n", i, uberblocks[i]
+	                exit 1
+	            }
 	            count++;
 	        }
-	        if (count != ubcount) { exit 1; }
+	        if (count != ubcount) {
+	            printf "Total uberblock count: %s != %s\n", count, ubcount
+	            exit 1
+	        }
 	    }'
-
-	return $?
 }
 
 log_assert "zpool create -o ashift=<n>' works with different ashift values"
 log_onexit cleanup
 
-disk=$TEST_BASE_DIR/$FILEDISK0
-log_must mkfile $SIZE $disk
+disk=$(create_blockfile $SIZE)
 
 typeset ashifts=("9" "10" "11" "12" "13" "14" "15" "16")
 # since Illumos 4958 the largest uberblock is 8K so we have at least of 16/label
@@ -109,15 +112,12 @@ do
 		    "$ashift (current = $pprop)"
 	fi
 	write_device_uberblocks $disk $TESTPOOL
-	verify_device_uberblocks $disk ${ubcount[$i]}
-	if [[ $? -ne 0 ]]
-	then
-		log_fail "Pool was created with unexpected number of uberblocks"
-	fi
+	log_must verify_device_uberblocks $disk ${ubcount[$i]}
+
 	# clean things for the next run
 	log_must zpool destroy $TESTPOOL
 	log_must zpool labelclear $disk
-	log_must eval "verify_device_uberblocks $disk 0"
+	log_must verify_device_uberblocks $disk 0
 	((i = i + 1))
 done
 

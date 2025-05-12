@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -7,7 +8,7 @@
 # You may not use this file except in compliance with the License.
 #
 # You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
+# or https://opensource.org/licenses/CDDL-1.0.
 # See the License for the specific language governing permissions
 # and limitations under the License.
 #
@@ -26,7 +27,7 @@
 #
 
 #
-# Copyright (c) 2016 by Delphix. All rights reserved.
+# Copyright (c) 2016, 2019 by Delphix. All rights reserved.
 #
 
 . $STF_SUITE/tests/functional/cli_root/zfs_set/zfs_set_common.kshlib
@@ -53,9 +54,7 @@ function cleanup
 	typeset dtst
 	for dtst in $new_fsclone $new_volclone $fsclone $volclone \
 	    $fssnap $volsnap; do
-		if datasetexists $dtst; then
-			log_must zfs destroy -f $dtst
-		fi
+		destroy_dataset "$dtst" "-f"
 	done
 
 	cleanup_user_prop $pool

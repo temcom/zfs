@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -7,7 +8,7 @@
 # You may not use this file except in compliance with the License.
 #
 # You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
+# or https://opensource.org/licenses/CDDL-1.0.
 # See the License for the specific language governing permissions
 # and limitations under the License.
 #
@@ -47,8 +48,13 @@ log_assert "'zfs set' fails with invalid arguments"
 
 set -A editable_props "quota" "reservation" "reserv" "volsize" "recordsize" "recsize" \
 		"mountpoint" "checksum" "compression" "compress" "atime" \
-		"devices" "exec" "setuid" "readonly" "zoned" "snapdir" "aclmode" \
+		"devices" "exec" "setuid" "readonly" "snapdir" "aclmode" \
 		"aclinherit" "canmount" "xattr" "copies" "version"
+if is_freebsd; then
+	editable_props+=("jailed")
+else
+	editable_props+=("zoned")
+fi
 
 for ds in $TESTPOOL $TESTPOOL/$TESTFS $TESTPOOL/$TESTVOL \
 	$TESTPOOL/$TESTFS@$TESTSNAP; do

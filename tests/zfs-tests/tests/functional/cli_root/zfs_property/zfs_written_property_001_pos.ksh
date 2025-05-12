@@ -1,4 +1,5 @@
 #!/bin/ksh
+# SPDX-License-Identifier: CDDL-1.0
 #
 # This file and its contents are supplied under the terms of the
 # Common Development and Distribution License ("CDDL"), version 1.0.
@@ -11,13 +12,13 @@
 #
 
 #
-# Copyright (c) 2012, 2016 by Delphix. All rights reserved.
+# Copyright (c) 2012, 2017 by Delphix. All rights reserved.
 #
 
 #
 # DESCRIPTION
 # Verify that "zfs list" gives correct values for written and written@
-# proerties for the dataset when different operations are on done on it
+# properties for the dataset when different operations are on done on it
 #
 #
 # STRATEGY
@@ -36,7 +37,7 @@
 function cleanup
 {
 	for ds in $datasets; do
-		datasetexists $ds && log_must zfs destroy -R $TESTPOOL/$TESTFS1
+		datasetexists $ds && destroy_dataset $TESTPOOL/$TESTFS1 -R
 	done
 }
 function get_prop_mb
@@ -86,7 +87,7 @@ blocks=0
 for i in 1 2 3; do
 	written=$(get_prop written $TESTPOOL/$TESTFS1@snap$i)
 	if [[ $blocks -eq 0 ]]; then
-		# Written value for the frist non-clone snapshot is
+		# Written value for the first non-clone snapshot is
 		# expected to be equal to the referenced value.
 		expected_written=$( \
 		    get_prop referenced $TESTPOOL/$TESTFS1@snap$i)
@@ -120,7 +121,7 @@ sync_pool
 written=$(get_prop written $TESTPOOL/$TESTFS1)
 writtenat3=$(get_prop written@snap3 $TESTPOOL/$TESTFS1)
 [[ $written -eq $writtenat3 ]] || \
-    log_fail "Written and written@ dont match $written $writtenat3"
+    log_fail "Written and written@ don't match $written $writtenat3"
 within_percent $written $before_written 0.1 && \
     log_fail "Unexpected written value after delete $written $before_written"
 writtenat=$(get_prop written@snap1 $TESTPOOL/$TESTFS1)
@@ -163,6 +164,7 @@ before_clone=$(get_prop written $TESTPOOL/$TESTFS1)
 log_must zfs clone $TESTPOOL/$TESTFS1@snap1 $TESTPOOL/$TESTFS1/snap1.clone
 log_must dd if=/dev/urandom of=/$TESTPOOL/$TESTFS1/snap1.clone/testfile bs=1M \
     count=40
+sync_pool
 after_clone=$(get_prop written $TESTPOOL/$TESTFS1)
 within_percent $before_clone $after_clone 99.5 || \
     log_fail "unexpected written for clone $before_clone $after_clone"
@@ -216,15 +218,14 @@ for ds in $datasets; do
 	    count=$blocks
 	sync_pool
 done
-recursive_output=$(zfs get -r written@current $TESTPOOL | \
-    grep -v $TESTFS1@ | grep -v $TESTFS2@ | grep -v $TESTFS3@ | \
-    grep -v "VALUE" | grep -v "-")
-expected="20.0M"
+recursive_output=$(zfs get -p -r written@current $TESTPOOL | \
+    grep -ve $TESTFS1@ -e $TESTFS2@ -e $TESTFS3@ -e "VALUE" | grep -v "-")
+expected="$((20 * mb_block))"
 for ds in $datasets; do
 	writtenat=$(echo "$recursive_output" | grep -v $ds/)
-	writtenat=$(echo "$writtenat" | grep $ds | awk '{print $3}')
-	[[ $writtenat == $expected ]] || \
-	    log_fail "recursive written property output mismatch"
+	writtenat=$(echo "$writtenat" | awk -v ds="$ds" '$0 ~ ds {print $3}')
+	within_percent $writtenat $expected 99.5 || \
+	    log_fail "Unexpected written@ value on $ds"
 done
 
 log_pass "zfs written and written@ property fields print correct values"

@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -7,7 +8,7 @@
 # You may not use this file except in compliance with the License.
 #
 # You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
+# or https://opensource.org/licenses/CDDL-1.0.
 # See the License for the specific language governing permissions
 # and limitations under the License.
 #
@@ -29,7 +30,7 @@
 # Copyright (c) 2016 by Delphix. All rights reserved.
 #
 
-. $STF_SUITE/include/libtest.shlib
+. $STF_SUITE/tests/functional/cli_root/zpool_export/zpool_export.kshlib
 
 #
 # DESCRIPTION:
@@ -43,18 +44,7 @@
 
 verify_runnable "global"
 
-function cleanup
-{
-	typeset dir=$(get_device_dir $DISKS)
-	datasetexists "$TESTPOOL/$TESTFS" || \
-		log_must zpool import -d $dir $TESTPOOL
-
-	ismounted "$TESTPOOL/$TESTFS"
-	(( $? != 0 )) && \
-	    log_must zfs mount $TESTPOOL/$TESTFS
-}
-
-log_onexit cleanup
+log_onexit zpool_export_cleanup
 
 set -A args "" "-f" "-? $TESTPOOL" "-QWERTYUIO $TESTPOOL"
 

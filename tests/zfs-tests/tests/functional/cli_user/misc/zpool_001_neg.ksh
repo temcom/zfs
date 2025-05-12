@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -7,7 +8,7 @@
 # You may not use this file except in compliance with the License.
 #
 # You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
+# or https://opensource.org/licenses/CDDL-1.0.
 # See the License for the specific language governing permissions
 # and limitations under the License.
 #
@@ -45,16 +46,20 @@
 
 function cleanup
 {
-	if [ -e $TEST_BASE_DIR/zpool_001_neg.$$.txt ]
+	if [ -e "$TEMPFILE" ]
 	then
-		rm $TEST_BASE_DIR/zpool_001_neg.$$.txt
+		rm -f "$TEMPFILE"
 	fi
 }
+
+TEMPFILE="$TEST_BASE_DIR/zpool_001_neg.$$.txt"
 
 log_onexit cleanup
 log_assert "zpool shows a usage message when run as a user"
 
-eval "zpool > $TEST_BASE_DIR/zpool_001_neg.$$.txt 2>&1"
-log_must grep "usage: zpool command args" $TEST_BASE_DIR/zpool_001_neg.$$.txt
+eval "zpool > $TEMPFILE 2>&1"
+log_must grep "usage: zpool command args" "$TEMPFILE"
+
+log_must awk '{if (length($0) > 80) exit 1}' $TEMPFILE
 
 log_pass "zpool shows a usage message when run as a user"

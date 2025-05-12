@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: CDDL-1.0
 #
 # This file and its contents are supplied under the terms of the
 # Common Development and Distribution License ("CDDL"), version 1.0.
@@ -11,6 +12,7 @@
 
 #
 # Copyright (c) 2016 by Delphix. All rights reserved.
+# Copyright (c) 2020, Kjeld Schouten-Lebbing. All rights reserved.
 #
 
 [global]
@@ -24,7 +26,9 @@ thread=1
 directory=${DIRECTORY}
 numjobs=${NUMJOBS}
 filesize=${FILE_SIZE}
-buffer_compress_percentage=66
-buffer_compress_chunk=4096
+randseed=${PERF_RANDSEED}
+buffer_compress_percentage=${PERF_COMPPERCENT}
+buffer_pattern=0xdeadbeef
+buffer_compress_chunk=${PERF_COMPCHUNK}
 
 [job]

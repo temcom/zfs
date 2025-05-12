@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -7,7 +8,7 @@
 # You may not use this file except in compliance with the License.
 #
 # You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
+# or https://opensource.org/licenses/CDDL-1.0.
 # See the License for the specific language governing permissions
 # and limitations under the License.
 #
@@ -47,32 +48,35 @@ verify_runnable "global"
 
 function cleanup
 {
-	poolexists $TESTPOOL && \
-		destroy_pool "$TESTPOOL"
-
-	datasetexists $TESTPOOL1/$TESTVOL && \
-		log_must zfs destroy -f $TESTPOOL1/$TESTVOL
-	poolexists $TESTPOOL1 && \
-		destroy_pool "$TESTPOOL1"
-
-	partition_cleanup
-
+	poolexists $TESTPOOL && destroy_pool $TESTPOOL
+	poolexists $TESTPOOL1 && destroy_pool $TESTPOOL1
+	if [ -n "$recursive" ]; then
+		set_tunable64 VOL_RECURSIVE $recursive
+	fi
 }
 
 log_assert "'zpool add <pool> <vdev> ...' can add zfs volume to the pool."
 
 log_onexit cleanup
 
-create_pool "$TESTPOOL" "${disk}${SLICE_PREFIX}${SLICE0}"
-log_must poolexists "$TESTPOOL"
+create_pool $TESTPOOL $DISK0
+log_must poolexists $TESTPOOL
 
-create_pool "$TESTPOOL1" "${disk}${SLICE_PREFIX}${SLICE1}"
-log_must poolexists "$TESTPOOL1"
+create_pool $TESTPOOL1 $DISK1
+log_must poolexists $TESTPOOL1
 log_must zfs create -V $VOLSIZE $TESTPOOL1/$TESTVOL
 block_device_wait
 
-log_must zpool add "$TESTPOOL" $ZVOL_DEVDIR/$TESTPOOL1/$TESTVOL
+if is_freebsd; then
+	recursive=$(get_tunable VOL_RECURSIVE)
+	log_must set_tunable64 VOL_RECURSIVE 1
+fi
+log_must zpool add --allow-ashift-mismatch $TESTPOOL $ZVOL_DEVDIR/$TESTPOOL1/$TESTVOL
 
 log_must vdevs_in_pool "$TESTPOOL" "$ZVOL_DEVDIR/$TESTPOOL1/$TESTVOL"
+
+# Give zed a chance to finish processing the event, otherwise
+# a race condition can lead to stuck "zpool destroy $TESTPOOL"
+sleep 1
 
 log_pass "'zpool add <pool> <vdev> ...' adds zfs volume to the pool successfully"

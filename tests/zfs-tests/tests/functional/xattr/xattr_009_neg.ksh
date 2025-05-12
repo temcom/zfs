@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -7,7 +8,7 @@
 # You may not use this file except in compliance with the License.
 #
 # You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
+# or https://opensource.org/licenses/CDDL-1.0.
 # See the License for the specific language governing permissions
 # and limitations under the License.
 #
@@ -39,10 +40,6 @@
 #       2. Verify we're unable to create a symbolic link
 #	3. Verify we're unable to create a hard link
 #
-
-if is_linux; then
-	log_unsupported "Test case isn't applicable to Linux"
-fi
 
 function cleanup {
 

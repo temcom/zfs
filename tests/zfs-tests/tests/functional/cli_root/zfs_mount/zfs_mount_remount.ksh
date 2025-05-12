@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -7,7 +8,7 @@
 # You may not use this file except in compliance with the License.
 #
 # You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
+# or https://opensource.org/licenses/CDDL-1.0.
 # See the License for the specific language governing permissions
 # and limitations under the License.
 #
@@ -29,7 +30,7 @@
 
 #
 # DESCRIPTION:
-# Verify remount functionality, expecially on readonly objects.
+# Verify remount functionality, especially on readonly objects.
 #
 # STRATEGY:
 # 1. Prepare a filesystem and a snapshot
@@ -48,10 +49,18 @@ function cleanup
 {
 	log_must_busy zpool export $TESTPOOL
 	log_must zpool import $TESTPOOL
-	snapexists $TESTSNAP && log_must zfs destroy $TESTSNAP
+	snapexists $TESTSNAP && destroy_dataset $TESTSNAP
 	[[ -d $MNTPSNAP ]] && log_must rmdir $MNTPSNAP
 	return 0
 }
+
+if is_freebsd; then
+	typeset RO="-t zfs -ur"
+	typeset RW="-t zfs -uw"
+else
+	typeset RO="-o remount,ro"
+	typeset RW="-o remount,rw"
+fi
 
 #
 # Verify the $filesystem is mounted readonly
@@ -76,8 +85,13 @@ function checkmount # dataset option
 {
 	typeset dataset="$1"
 	typeset option="$2"
+	typeset options=""
 
-	options="$(awk -v ds="$dataset" '$1 == ds { print $4 }' /proc/mounts)"
+	if is_freebsd; then
+		options=$(mount -p | awk -v ds="$dataset" '$1 == ds { print $4 }')
+	else
+		options=$(awk -v ds="$dataset" '$1 == ds { print $4 }' /proc/mounts)
+	fi
 	if [[ "$options" == '' ]]; then
 		log_fail "Dataset $dataset is not mounted"
 	elif [[ ! -z "${options##*$option*}" ]]; then
@@ -105,21 +119,23 @@ log_must mkdir -p $MNTPSNAP
 # 2. Verify we can (re)mount the dataset readonly/read-write
 log_must touch $MNTPFS/file.dat
 checkmount $TESTFS 'rw'
-log_must mount -o remount,ro $TESTFS $MNTPFS
+log_must mount $RO $TESTFS $MNTPFS
 readonlyfs $MNTPFS
 checkmount $TESTFS 'ro'
-log_must mount -o remount,rw $TESTFS $MNTPFS
+log_must mount $RW $TESTFS $MNTPFS
 log_must touch $MNTPFS/file.dat
 checkmount $TESTFS 'rw'
 
-# 3. Verify we can (re)mount the snapshot readonly
-log_must mount -t zfs $TESTSNAP $MNTPSNAP
-readonlyfs $MNTPSNAP
-checkmount $TESTSNAP 'ro'
-log_must mount -o remount,ro $TESTSNAP $MNTPSNAP
-readonlyfs $MNTPSNAP
-checkmount $TESTSNAP 'ro'
-log_must umount $MNTPSNAP
+if is_linux; then
+	# 3. Verify we can (re)mount the snapshot readonly
+	log_must mount -t zfs $TESTSNAP $MNTPSNAP
+	readonlyfs $MNTPSNAP
+	checkmount $TESTSNAP 'ro'
+	log_must mount $RO $TESTSNAP $MNTPSNAP
+	readonlyfs $MNTPSNAP
+	checkmount $TESTSNAP 'ro'
+	log_must umount $MNTPSNAP
+fi
 
 # 4. Verify we can't remount a snapshot read-write
 # The "mount -o rw" command will succeed but the snapshot is mounted readonly.
@@ -127,7 +143,7 @@ log_must umount $MNTPSNAP
 log_must mount -t zfs -o rw $TESTSNAP $MNTPSNAP
 readonlyfs $MNTPSNAP
 checkmount $TESTSNAP 'ro'
-log_mustnot mount -o remount,rw $TESTSNAP $MNTPSNAP
+log_mustnot mount $RW $TESTSNAP $MNTPSNAP
 readonlyfs $MNTPSNAP
 checkmount $TESTSNAP 'ro'
 log_must umount $MNTPSNAP
@@ -138,9 +154,9 @@ log_must eval "echo 'password' | zfs create -o sync=disabled \
     -o encryption=on -o keyformat=passphrase $TESTFS/crypt"
 CRYPT_MNTPFS="$(get_prop mountpoint $TESTFS/crypt)"
 log_must touch $CRYPT_MNTPFS/file.dat
-log_must mount -o remount,ro $TESTFS/crypt $CRYPT_MNTPFS
+log_must mount $RO $TESTFS/crypt $CRYPT_MNTPFS
 log_must umount -f $CRYPT_MNTPFS
-zpool sync $TESTPOOL
+sync_pool $TESTPOOL
 
 # 6. Re-import the pool readonly
 log_must zpool export $TESTPOOL
@@ -149,7 +165,7 @@ log_must zpool import -o readonly=on $TESTPOOL
 # 7. Verify we can't remount its filesystem read-write
 readonlyfs $MNTPFS
 checkmount $TESTFS 'ro'
-log_mustnot mount -o remount,rw $MNTPFS
+log_mustnot mount $RW $MNTPFS
 readonlyfs $MNTPFS
 checkmount $TESTFS 'ro'
 

@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -7,7 +8,7 @@
 # You may not use this file except in compliance with the License.
 #
 # You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
+# or https://opensource.org/licenses/CDDL-1.0.
 # See the License for the specific language governing permissions
 # and limitations under the License.
 #
@@ -41,7 +42,7 @@
 #	1. Create three directories
 #	2. Set tdir1 and tdir3 project ID as PRJID1,
 #	   set tdir2 project ID as PRJID2.
-#	3. Create regular file under tdir1. It inherits tdir1 proejct ID.
+#	3. Create regular file under tdir1. It inherits tdir1 project ID.
 #	4. Hardlink from tdir1's child to tdir2 should be denied,
 #	   move tdir1's child to tdir2 will be object recreated.
 #	5. Hardlink from tdir1's child to tdir3 should succeed.

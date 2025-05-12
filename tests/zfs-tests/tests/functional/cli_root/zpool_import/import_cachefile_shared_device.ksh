@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 
 #
 # This file and its contents are supplied under the terms of the
@@ -50,14 +51,8 @@ function dev_checksum
 
 	log_note "Compute checksum of '$dev'"
 
-	checksum=$(md5sum $dev)
-	if [[ $? -ne 0 ]]; then
+	xxh128digest $dev ||
 		log_fail "Failed to compute checksum of '$dev'"
-		return 1
-	fi
-
-	echo "$checksum"
-	return 0
 }
 
 function test_shared_device
@@ -90,7 +85,7 @@ function test_shared_device
 	typeset checksum2=$(dev_checksum $sharedvdev)
 
 	if [[ $checksum1 == $checksum2 ]]; then
-		log_pos "Device hasn't been modified by original pool"
+		log_pass "Device hasn't been modified by original pool"
 	else
 		log_fail "Device has been modified by original pool." \
 		    "Checksum mismatch: $checksum1 != $checksum2."
@@ -108,6 +103,7 @@ test_shared_device "mirror $VDEV0 $VDEV1" "mirror $VDEV1 $VDEV2" "$VDEV1"
 test_shared_device "mirror $VDEV0 $VDEV1 $VDEV2" "mirror $VDEV2 $VDEV3" \
     "$VDEV2"
 test_shared_device "raidz $VDEV0 $VDEV1 $VDEV2" "$VDEV2" "$VDEV2"
+test_shared_device "draid $VDEV0 $VDEV1 $VDEV2" "$VDEV2" "$VDEV2"
 test_shared_device "$VDEV0 log $VDEV1" "$VDEV2 log $VDEV1" "$VDEV1" "-m"
 
 log_pass "Pool doesn't write to a device it doesn't own anymore."

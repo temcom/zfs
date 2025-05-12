@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -7,7 +8,7 @@
 # You may not use this file except in compliance with the License.
 #
 # You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
+# or https://opensource.org/licenses/CDDL-1.0.
 # See the License for the specific language governing permissions
 # and limitations under the License.
 #
@@ -54,6 +55,16 @@ function cleanup
 
 if ! lsattr -pd > /dev/null 2>&1; then
 	log_unsupported "Current e2fsprogs does not support set/show project ID"
+fi
+
+#
+# e2fsprogs-1.44.4 incorrectly reports verity 'V' bit when the project 'P'
+# bit is set.  Skip this test when 1.44.4 is installed to prevent failures.
+#
+# https://github.com/tytso/e2fsprogs/commit/7e5a95e3d
+#
+if lsattr -V 2>&1 | grep "lsattr 1.44.4"; then
+	log_unsupported "Current e2fsprogs incorrectly reports 'V' verity bit"
 fi
 
 log_onexit cleanup

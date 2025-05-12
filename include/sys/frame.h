@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: CDDL-1.0
 /*
  * CDDL HEADER START
  *
@@ -23,8 +24,13 @@
 extern "C" {
 #endif
 
-#if defined(__KERNEL__) && defined(HAVE_STACK_FRAME_NON_STANDARD)
+#if defined(__KERNEL__) && defined(HAVE_KERNEL_OBJTOOL) && \
+    defined(HAVE_STACK_FRAME_NON_STANDARD)
+#if defined(HAVE_KERNEL_OBJTOOL_HEADER)
+#include <linux/objtool.h>
+#else
 #include <linux/frame.h>
+#endif
 #else
 #define	STACK_FRAME_NON_STANDARD(func)
 #endif

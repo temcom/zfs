@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -28,15 +29,13 @@ function wait_for_removal # pool
 	typeset pool=$1
 	typeset callback=$2
 
-	while is_pool_removing $pool; do
-		sleep 1
-	done
+	log_must zpool wait -t remove $pool
 
 	#
 	# The pool state changes before the TXG finishes syncing; wait for
 	# the removal to be completed on disk.
 	#
-	sync_pool
+	sync_pool $pool
 
 	log_must is_pool_removed $pool
 	return 0
@@ -62,7 +61,8 @@ function attempt_during_removal # pool disk callback [args]
 	typeset callback=$3
 
 	shift 3
-	set_tunable64 zfs_remove_max_bytes_pause 0
+	log_onexit_push set_tunable32 REMOVAL_SUSPEND_PROGRESS 0
+	set_tunable32 REMOVAL_SUSPEND_PROGRESS 1
 
 	log_must zpool remove $pool $disk
 
@@ -70,7 +70,7 @@ function attempt_during_removal # pool disk callback [args]
 	# We want to make sure that the removal started
 	# before issuing the callback.
 	#
-	sync
+	sync_pool $pool
 	log_must is_pool_removing $pool
 
 	log_must $callback "$@"
@@ -81,25 +81,19 @@ function attempt_during_removal # pool disk callback [args]
 	#
 	log_must is_pool_removing $pool
 
-	set_tunable64 zfs_remove_max_bytes_pause 18446744073709551615
+	set_tunable32 REMOVAL_SUSPEND_PROGRESS 0
+	log_onexit_pop
 
 	log_must wait_for_removal $pool
 	log_mustnot vdevs_in_pool $pool $disk
 	return 0
 }
 
-function indirect_vdev_mapping_size # pool
-{
-	typeset pool=$1
-	zdb -P $pool | grep 'indirect vdev' | \
-	    sed -E 's/.*\(([0-9]+) in memory\).*/\1/g'
-}
-
 function random_write # file write_size
 {
 	typeset file=$1
 	typeset block_size=$2
-	typeset file_size=$(stat -c%s $file 2>/dev/null)
+	typeset file_size=$(stat_size $file 2>/dev/null)
 	typeset nblocks=$((file_size / block_size))
 
 	[[ -w $file ]] || return 1
@@ -141,6 +135,8 @@ function test_removal_with_operation # callback [args]
 
 	kill $killpid
 	wait
+
+	verify_pool $TESTPOOL
 }
 
 #

@@ -1,20 +1,11 @@
-include $(top_srcdir)/config/Rules.am
+libtpool_la_CFLAGS  = $(AM_CFLAGS) $(LIBRARY_CFLAGS)
+libtpool_la_CFLAGS += -fvisibility=hidden
+# https://gcc.gnu.org/bugzilla/show_bug.cgi?id=61118
+libtpool_la_CFLAGS += $(NO_CLOBBERED)
 
-DEFAULT_INCLUDES += \
-	-I$(top_srcdir)/include \
-	-I$(top_srcdir)/lib/libspl/include
+noinst_LTLIBRARIES += libtpool.la
+CPPCHECKTARGETS    += libtpool.la
 
-noinst_LTLIBRARIES = libtpool.la
-
-USER_C = \
-	thread_pool.c \
-	thread_pool_impl.h
-
-nodist_libtpool_la_SOURCES = $(USER_C)
-
-libtpool_la_LIBADD = \
-	$(top_builddir)/lib/libspl/libspl.la
-
-libtpool_la_LDFLAGS = -pthread
-
-EXTRA_DIST = $(USER_C)
+libtpool_la_SOURCES = \
+	%D%/thread_pool.c \
+	%D%/thread_pool_impl.h

@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -7,7 +8,7 @@
 # You may not use this file except in compliance with the License.
 #
 # You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
+# or https://opensource.org/licenses/CDDL-1.0.
 # See the License for the specific language governing permissions
 # and limitations under the License.
 #
@@ -30,7 +31,6 @@
 #
 
 . $STF_SUITE/include/libtest.shlib
-. $STF_SUITE/tests/functional/write_dirs/write_dirs.cfg
 
 #
 # DESCRIPTION:
@@ -38,7 +38,7 @@
 # is full. The zfs file system should be work well and stable.
 #
 # STRATEGY:
-# 1. Create a pool & dateset
+# 1. Create a pool & dataset
 # 2. Make directories in the zfs file system
 # 3. Create 5000 files in each directories
 # 4. Test case exit when the disk is full
@@ -48,11 +48,10 @@ verify_runnable "both"
 
 function cleanup
 {
-	for file in `find $TESTDIR -type f`; do
-		cat /dev/null > $file
-	done
-	log_must sync
-	log_must rm -rf $TESTDIR/*
+	destroy_dataset $TESTPOOL/$TESTFS
+	wait_freeing $TESTPOOL
+	sync_pool $TESTPOOL
+	zfs create -o mountpoint=$TESTDIR $TESTPOOL/$TESTFS
 }
 
 typeset -i retval=0

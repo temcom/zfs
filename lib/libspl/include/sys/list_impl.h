@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: CDDL-1.0
 /*
  * CDDL HEADER START
  *
@@ -7,7 +8,7 @@
  * with the License.
  *
  * You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
- * or http://www.opensolaris.org/os/licensing.
+ * or https://opensource.org/licenses/CDDL-1.0.
  * See the License for the specific language governing permissions
  * and limitations under the License.
  *
@@ -34,12 +35,11 @@ extern "C" {
 #endif
 
 struct list_node {
-	struct list_node *list_next;
-	struct list_node *list_prev;
+	struct list_node *next;
+	struct list_node *prev;
 };
 
 struct list {
-	size_t	list_size;
 	size_t	list_offset;
 	struct list_node list_head;
 };

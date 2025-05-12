@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: CDDL-1.0
 /*
  * CDDL HEADER START
  *
@@ -6,7 +7,7 @@
  * You may not use this file except in compliance with the License.
  *
  * You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
- * or http://www.opensolaris.org/os/licensing.
+ * or https://opensource.org/licenses/CDDL-1.0.
  * See the License for the specific language governing permissions
  * and limitations under the License.
  *
@@ -36,6 +37,7 @@ extern "C" {
 
 #include <sys/zfs_context.h>
 #include <sys/crypto/common.h>
+#include <sys/asm_linkage.h>
 
 /* Similar to sysmacros.h IS_P2ALIGNED, but checks two pointers: */
 #define	IS_P2ALIGNED2(v, w, a) \
@@ -83,14 +85,7 @@ extern "C" {
 
 /* AES key size definitions */
 #define	AES_MINBITS		128
-#define	AES_MINBYTES		((AES_MINBITS) >> 3)
 #define	AES_MAXBITS		256
-#define	AES_MAXBYTES		((AES_MAXBITS) >> 3)
-
-#define	AES_MIN_KEY_BYTES	((AES_MINBITS) >> 3)
-#define	AES_MAX_KEY_BYTES	((AES_MAXBITS) >> 3)
-#define	AES_192_KEY_BYTES	24
-#define	AES_IV_LEN		16
 
 /* AES key schedule may be implemented with 32- or 64-bit elements: */
 #define	AES_32BIT_KS		32
@@ -107,6 +102,11 @@ typedef union {
 } aes_ks_t;
 
 typedef struct aes_impl_ops aes_impl_ops_t;
+
+/*
+ * The absolute offset of the encr_ks (0) and the nr (504) fields are hard
+ * coded in aesni-gcm-x86_64, so please don't change (or adjust accordingly).
+ */
 typedef struct aes_key aes_key_t;
 struct aes_key {
 	aes_ks_t	encr_ks;  /* encryption key schedule */
@@ -150,19 +150,14 @@ extern int aes_decrypt_contiguous_blocks(void *ctx, char *data, size_t length,
 #ifdef _AES_IMPL
 
 typedef enum aes_mech_type {
-	AES_ECB_MECH_INFO_TYPE,		/* SUN_CKM_AES_ECB */
-	AES_CBC_MECH_INFO_TYPE,		/* SUN_CKM_AES_CBC */
-	AES_CBC_PAD_MECH_INFO_TYPE,	/* SUN_CKM_AES_CBC_PAD */
-	AES_CTR_MECH_INFO_TYPE,		/* SUN_CKM_AES_CTR */
 	AES_CCM_MECH_INFO_TYPE,		/* SUN_CKM_AES_CCM */
 	AES_GCM_MECH_INFO_TYPE,		/* SUN_CKM_AES_GCM */
-	AES_GMAC_MECH_INFO_TYPE		/* SUN_CKM_AES_GMAC */
 } aes_mech_type_t;
 
 #endif /* _AES_IMPL */
 
 /*
- * Methods used to define aes implementation
+ * Methods used to define AES implementation
  *
  * @aes_gen_f Key generation
  * @aes_enc_f Function encrypts one block
@@ -190,6 +185,16 @@ struct aes_impl_ops {
 extern const aes_impl_ops_t aes_generic_impl;
 #if defined(__x86_64)
 extern const aes_impl_ops_t aes_x86_64_impl;
+
+/* These functions are used to execute amd64 instructions for AMD or Intel: */
+extern ASMABI int rijndael_key_setup_enc_amd64(uint32_t rk[],
+	const uint32_t cipherKey[], int keyBits);
+extern ASMABI int rijndael_key_setup_dec_amd64(uint32_t rk[],
+	const uint32_t cipherKey[], int keyBits);
+extern ASMABI void aes_encrypt_amd64(const uint32_t rk[], int Nr,
+	const uint32_t pt[4], uint32_t ct[4]);
+extern ASMABI void aes_decrypt_amd64(const uint32_t rk[], int Nr,
+	const uint32_t ct[4], uint32_t pt[4]);
 #endif
 #if defined(__x86_64) && defined(HAVE_AES)
 extern const aes_impl_ops_t aes_aesni_impl;
@@ -201,9 +206,9 @@ extern const aes_impl_ops_t aes_aesni_impl;
 void aes_impl_init(void);
 
 /*
- * Get selected aes implementation
+ * Returns optimal allowed AES implementation
  */
-struct aes_impl_ops *aes_impl_get_ops(void);
+const struct aes_impl_ops *aes_impl_get_ops(void);
 
 #ifdef	__cplusplus
 }

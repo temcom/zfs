@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: CDDL-1.0
 /*
  * CDDL HEADER START
  *
@@ -6,7 +7,7 @@
  * You may not use this file except in compliance with the License.
  *
  * You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
- * or http://www.opensolaris.org/os/licensing.
+ * or https://opensource.org/licenses/CDDL-1.0.
  * See the License for the specific language governing permissions
  * and limitations under the License.
  *
@@ -32,16 +33,16 @@
 
 #define	DST_AVG_BLKSHIFT 14
 
-/* ARGSUSED */
 static int
 dsl_null_checkfunc(void *arg, dmu_tx_t *tx)
 {
+	(void) arg, (void) tx;
 	return (0);
 }
 
 static int
 dsl_sync_task_common(const char *pool, dsl_checkfunc_t *checkfunc,
-    dsl_syncfunc_t *syncfunc, void *arg,
+    dsl_syncfunc_t *syncfunc, dsl_sigfunc_t *sigfunc, void *arg,
     int blocks_modified, zfs_space_check_t space_check, boolean_t early)
 {
 	spa_t *spa;
@@ -57,7 +58,7 @@ dsl_sync_task_common(const char *pool, dsl_checkfunc_t *checkfunc,
 
 top:
 	tx = dmu_tx_create_dd(dp->dp_mos_dir);
-	VERIFY0(dmu_tx_assign(tx, TXG_WAIT));
+	VERIFY0(dmu_tx_assign(tx, DMU_TX_WAIT));
 
 	dst.dst_pool = dp;
 	dst.dst_txg = dmu_tx_get_txg(tx);
@@ -85,7 +86,19 @@ top:
 
 	dmu_tx_commit(tx);
 
-	txg_wait_synced(dp, dst.dst_txg);
+	if (sigfunc != NULL) {
+		err = txg_wait_synced_flags(dp, dst.dst_txg, TXG_WAIT_SIGNAL);
+		if (err != 0) {
+			VERIFY3U(err, ==, EINTR);
+			/* current contract is to call func once */
+			sigfunc(arg, tx);
+			/* in case we're performing an EAGAIN retry */
+			sigfunc = NULL;
+
+			txg_wait_synced(dp, dst.dst_txg);
+		}
+	} else
+		txg_wait_synced(dp, dst.dst_txg);
 
 	if (dst.dst_error == EAGAIN) {
 		txg_wait_synced(dp, dst.dst_txg + TXG_DEFER_SIZE);
@@ -124,7 +137,7 @@ dsl_sync_task(const char *pool, dsl_checkfunc_t *checkfunc,
     dsl_syncfunc_t *syncfunc, void *arg,
     int blocks_modified, zfs_space_check_t space_check)
 {
-	return (dsl_sync_task_common(pool, checkfunc, syncfunc, arg,
+	return (dsl_sync_task_common(pool, checkfunc, syncfunc, NULL, arg,
 	    blocks_modified, space_check, B_FALSE));
 }
 
@@ -138,7 +151,7 @@ dsl_sync_task(const char *pool, dsl_checkfunc_t *checkfunc,
  * For that reason, early synctasks can affect the process of writing dirty
  * changes to disk for the txg that they run and should be used with caution.
  * In addition, early synctasks should not dirty any metaslabs as this would
- * invalidate the precodition/invariant for subsequent early synctasks.
+ * invalidate the precondition/invariant for subsequent early synctasks.
  * [see dsl_pool_sync() and dsl_early_sync_task_verify()]
  */
 int
@@ -146,21 +159,32 @@ dsl_early_sync_task(const char *pool, dsl_checkfunc_t *checkfunc,
     dsl_syncfunc_t *syncfunc, void *arg,
     int blocks_modified, zfs_space_check_t space_check)
 {
-	return (dsl_sync_task_common(pool, checkfunc, syncfunc, arg,
+	return (dsl_sync_task_common(pool, checkfunc, syncfunc, NULL, arg,
 	    blocks_modified, space_check, B_TRUE));
+}
+
+/*
+ * A standard synctask that can be interrupted from a signal. The sigfunc
+ * is called once if a signal occurred while waiting for the task to sync.
+ */
+int
+dsl_sync_task_sig(const char *pool, dsl_checkfunc_t *checkfunc,
+    dsl_syncfunc_t *syncfunc, dsl_sigfunc_t *sigfunc, void *arg,
+    int blocks_modified, zfs_space_check_t space_check)
+{
+	return (dsl_sync_task_common(pool, checkfunc, syncfunc, sigfunc, arg,
+	    blocks_modified, space_check, B_FALSE));
 }
 
 static void
 dsl_sync_task_nowait_common(dsl_pool_t *dp, dsl_syncfunc_t *syncfunc, void *arg,
-    int blocks_modified, zfs_space_check_t space_check, dmu_tx_t *tx,
-    boolean_t early)
+    dmu_tx_t *tx, boolean_t early)
 {
 	dsl_sync_task_t *dst = kmem_zalloc(sizeof (*dst), KM_SLEEP);
 
 	dst->dst_pool = dp;
 	dst->dst_txg = dmu_tx_get_txg(tx);
-	dst->dst_space = blocks_modified << DST_AVG_BLKSHIFT;
-	dst->dst_space_check = space_check;
+	dst->dst_space_check = ZFS_SPACE_CHECK_NONE;
 	dst->dst_checkfunc = dsl_null_checkfunc;
 	dst->dst_syncfunc = syncfunc;
 	dst->dst_arg = arg;
@@ -174,18 +198,16 @@ dsl_sync_task_nowait_common(dsl_pool_t *dp, dsl_syncfunc_t *syncfunc, void *arg,
 
 void
 dsl_sync_task_nowait(dsl_pool_t *dp, dsl_syncfunc_t *syncfunc, void *arg,
-    int blocks_modified, zfs_space_check_t space_check, dmu_tx_t *tx)
+    dmu_tx_t *tx)
 {
-	dsl_sync_task_nowait_common(dp, syncfunc, arg,
-	    blocks_modified, space_check, tx, B_FALSE);
+	dsl_sync_task_nowait_common(dp, syncfunc, arg, tx, B_FALSE);
 }
 
 void
 dsl_early_sync_task_nowait(dsl_pool_t *dp, dsl_syncfunc_t *syncfunc, void *arg,
-    int blocks_modified, zfs_space_check_t space_check, dmu_tx_t *tx)
+    dmu_tx_t *tx)
 {
-	dsl_sync_task_nowait_common(dp, syncfunc, arg,
-	    blocks_modified, space_check, tx, B_TRUE);
+	dsl_sync_task_nowait_common(dp, syncfunc, arg, tx, B_TRUE);
 }
 
 /*

@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -7,7 +8,7 @@
 # You may not use this file except in compliance with the License.
 #
 # You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
+# or https://opensource.org/licenses/CDDL-1.0.
 # See the License for the specific language governing permissions
 # and limitations under the License.
 #
@@ -46,7 +47,7 @@
 
 verify_runnable "global"
 
-if ! $(is_physical_device $DISKS) ; then
+if ! is_physical_device $DISKS; then
 	log_unsupported "This directory cannot be run on raw files."
 fi
 
@@ -74,10 +75,7 @@ savedumpdev=$(get_dumpdevice)
 safe_dumpadm $voldev
 
 unset NOINUSE_CHECK
-echo "y" | newfs -v $voldev > /dev/null 2>&1
-if (( $? == 0 )) ; then
-	log_fail "newfs on dump zvol succeeded unexpectedly"
-fi
+log_mustnot eval "new_fs $voldev > /dev/null 2>&1"
 
 log_mustnot zpool create $TESTPOOL1 $voldev
 

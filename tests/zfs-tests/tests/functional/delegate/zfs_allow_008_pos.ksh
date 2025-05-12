@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -7,7 +8,7 @@
 # You may not use this file except in compliance with the License.
 #
 # You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
+# or https://opensource.org/licenses/CDDL-1.0.
 # See the License for the specific language governing permissions
 # and limitations under the License.
 #
@@ -33,13 +34,13 @@
 
 #
 # DESCRIPTION:
-#	non-root user can allow any permissions which he is holding to
-#	other else user when it get 'allow' permission.
+#	A non-root user can use 'zfs allow' to delegate permissions that
+#	they have, if they also have the 'allow' permission.
 #
 # STRATEGY:
 #	1. Set two set permissions to two datasets locally.
-#	2. Verify the non-root user can allow permission if he has allow
-#	   permission.
+#	2. Verify the non-root user can use 'zfs allow' if they have
+#	'allow' permission.
 #
 
 verify_runnable "both"
@@ -69,8 +70,8 @@ for dtst in $DATASETS ; do
 	log_must user_run $STAFF1 zfs allow -l $OTHER1 $perms1 $dtst
 	log_must verify_perm $dtst $perms1 $OTHER1
 
-	# $perms2 was not allow to $STAFF1, so he have no permission to
-	# delegate permission to other else.
+	# $perms2 was not allowed to $STAFF1, so they do not have
+	# permission to delegate permission to other users.
 	log_mustnot user_run $STAFF1 zfs allow $OTHER1 $perms2 $dtst
 	log_must verify_noperm $dtst $perms2 $OTHER1
 done

@@ -54,9 +54,9 @@
 #ifdef PPC64_ELF_ABI_v2
 
 #define	ENTRY(name) \
-	.align 2 ; \
+	.balign 2 ; \
 	.type name,@function; \
-	.globl name; \
+	.weak name; \
 name:
 
 #else /* PPC64_ELF_ABI_v1 */
@@ -64,9 +64,9 @@ name:
 #define	XGLUE(a,b) a##b
 #define	GLUE(a,b) XGLUE(a,b)
 #define	ENTRY(name) \
-	.align 2 ; \
-	.globl name; \
-	.globl GLUE(.,name); \
+	.balign 2 ; \
+	.weak name; \
+	.weak GLUE(.,name); \
 	.pushsection ".opd","aw"; \
 name: \
 	.quad GLUE(.,name); \
@@ -83,8 +83,8 @@ GLUE(.,name):
 #define	ENTRY(name) \
 	.text; \
 	.p2align 4; \
-	.globl  name; \
-	.type   name,@function; \
+	.weak name; \
+	.type name,@function; \
 name:
 
 #endif /* __powerpc64__ */

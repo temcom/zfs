@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 
 #
 # This file and its contents are supplied under the terms of the
@@ -23,7 +24,8 @@ echo "================================================================="
 echo " Tailing last $lines lines of dmesg log"
 echo "================================================================="
 
-sudo dmesg | tail -n $lines
+# report and reset afterwards
+sudo dmesg -c | tail -n $lines
 
 echo "================================================================="
 echo " End of dmesg log"

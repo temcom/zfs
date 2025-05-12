@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # This file and its contents are supplied under the terms of the
 # Common Development and Distribution License ("CDDL"), version 1.0.
@@ -60,6 +61,9 @@ log_mustnot_checkerror_program "Memory limit exhausted" -m 1 $TESTPOOL - <<-EOF
 	s = s .. s .. s .. s
 	return s
 EOF
+
+# Set the memlimit, in case it is a non-default value
+log_must set_tunable32 LUA_MAX_MEMLIMIT 100000000
 
 log_mustnot_checkerror_program "Invalid instruction or memory limit" \
     -m 200000000 $TESTPOOL - <<-EOF

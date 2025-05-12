@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -7,7 +8,7 @@
 # You may not use this file except in compliance with the License.
 #
 # You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
+# or https://opensource.org/licenses/CDDL-1.0.
 # See the License for the specific language governing permissions
 # and limitations under the License.
 #
@@ -50,10 +51,6 @@
 
 verify_runnable "global"
 
-if is_linux; then
-	log_unsupported "Test case isn't applicable to Linux"
-fi
-
 function cleanup
 {
 	poolexists $TESTPOOL1 && destroy_pool $TESTPOOL1
@@ -62,25 +59,21 @@ function cleanup
 
 	log_note "Kill off ufsdump process if still running"
 	kill -0 $PIDUFSDUMP > /dev/null 2>&1 && \
-	    log_must kill -9 $PIDUFSDUMP  > /dev/null 2>&1
+	    log_must eval "kill -9 $PIDUFSDUMP"
 	#
 	# Note: It would appear that ufsdump spawns a number of processes
 	# which are not killed when the $PIDUFSDUMP is whacked.  So best bet
 	# is to find the rest of the them and deal with them individually.
 	#
-	for all in `pgrep ufsdump`
-	do
-		kill -9 $all > /dev/null 2>&1
-	done
+	kill -9 `pgrep ufsdump` > /dev/null 2>&1
 
 	log_note "Kill off ufsrestore process if still running"
 	kill -0 $PIDUFSRESTORE > /dev/null 2>&1 && \
-	    log_must kill -9 $PIDUFSRESTORE  > /dev/null 2>&1
+	    log_must eval "kill -9 $PIDUFSRESTORE"
 
 	ismounted $UFSMP ufs && log_must umount $UFSMP
 
-	rm -rf $UFSMP
-	rm -rf $TESTDIR
+	rm -rf $UFSMP $TESTDIR
 
 	#
 	# Tidy up the disks we used.
@@ -98,19 +91,10 @@ typeset restored_files="${UFSMP}/restored_files"
 typeset -i dirnum=0
 typeset -i filenum=0
 typeset cwd=""
-typeset cyl=""
-
-for num in 0 1 2; do
-	eval typeset slice=\${FS_SIDE$num}
-	disk=${slice%s*}
-	slice=${slice##*${SLICE_PREFIX}}
-	log_must set_partition $slice "$cyl" $FS_SIZE $disk
-	cyl=$(get_endslice $disk $slice)
-done
 
 log_note "Make a ufs filesystem on source $rawdisk1"
-echo "y" | newfs -v $rawdisk1 > /dev/null 2>&1
-(($? != 0)) && log_untested "Unable to create ufs filesystem on $rawdisk1"
+new_fs $rawdisk1 > /dev/null 2>&1 ||
+	log_untested "Unable to create ufs filesystem on $rawdisk1"
 
 log_must mkdir -p $UFSMP
 
@@ -121,9 +105,9 @@ log_note "Now create some directories and files to be ufsdump'ed"
 while (($dirnum <= 2)); do
 	log_must mkdir $bigdir${dirnum}
 	while (( $filenum <= 2 )); do
-		file_write -o create -f $bigdir${dirnum}/file${filenum} \
+		if ! file_write -o create -f $bigdir${dirnum}/file${filenum} \
 		    -b $BLOCK_SIZE -c $BLOCK_COUNT
-		if [[ $? -ne 0 ]]; then
+		then
 			if [[ $dirnum -lt 3 ]]; then
 				log_fail "file_write only wrote" \
 				    "<(( $dirnum * 3 + $filenum ))>" \
@@ -149,12 +133,10 @@ log_mustnot zpool create $TESTPOOL1 "$disk1"
 log_mustnot poolexists $TESTPOOL1
 
 log_note "Attempt to take the source device in use by ufsdump as spare device"
-log_mustnot zpool create $TESTPOOL1 "$FS_SIDE2" spare "$disk1"
+log_mustnot zpool create $TESTPOOL1 "$FS_DISK2" spare "$disk1"
 log_mustnot poolexists $TESTPOOL1
 
-wait $PIDUFSDUMP
-typeset -i retval=$?
-(($retval != 0)) && log_fail "ufsdump failed with error code $ret_val"
+wait $PIDUFSDUMP || log_fail "ufsdump failed with error code $?"
 
 log_must mount $disk1 $UFSMP
 
@@ -175,7 +157,7 @@ log_mustnot poolexists $TESTPOOL2
 
 log_note "Attempt to take the restored device in use by ufsrestore as spare" \
     "device"
-log_mustnot zpool create -f $TESTPOOL2 "$FS_SIDE2" spare "$disk1"
+log_mustnot zpool create -f $TESTPOOL2 "$FS_DISK2" spare "$disk1"
 log_mustnot poolexists $TESTPOOL2
 
 log_pass "Unable to zpool over a device in use by ufsdump or ufsrestore"

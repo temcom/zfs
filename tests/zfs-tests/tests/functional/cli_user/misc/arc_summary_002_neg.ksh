@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -7,7 +8,7 @@
 # You may not use this file except in compliance with the License.
 #
 # You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
+# or https://opensource.org/licenses/CDDL-1.0.
 # See the License for the specific language governing permissions
 # and limitations under the License.
 #
@@ -27,12 +28,12 @@
 
 . $STF_SUITE/include/libtest.shlib
 
-typeset args=("-x" "-r" "-5" "-p 7" "--err" "-@")
+is_freebsd && ! python3 -c 'import sysctl' 2>/dev/null && log_unsupported "python3 sysctl module missing"
 
-log_assert "arc_summary.py generates an error code with invalid options"
+log_assert "arc_summary generates an error code with invalid options"
 
-for arg in "${args[@]}"; do
-        log_mustnot eval "arc_summary.py $arg > /dev/null"
+for arg in "-x" "-5" "-p 7" "--err" "-@"; do
+        log_mustnot eval "arc_summary $arg > /dev/null"
 done
 
-log_pass "arc_summary.py generates an error code with invalid options"
+log_pass "arc_summary generates an error code with invalid options"

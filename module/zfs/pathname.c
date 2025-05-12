@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: CDDL-1.0
 /*
  * CDDL HEADER START
  *
@@ -6,7 +7,7 @@
  * You may not use this file except in compliance with the License.
  *
  * You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
- * or http://www.opensolaris.org/os/licensing.
+ * or https://opensource.org/licenses/CDDL-1.0.
  * See the License for the specific language governing permissions
  * and limitations under the License.
  *
@@ -71,8 +72,7 @@ pn_alloc(struct pathname *pnp)
 void
 pn_alloc_sz(struct pathname *pnp, size_t sz)
 {
-	pnp->pn_path = pnp->pn_buf = kmem_alloc(sz, KM_SLEEP);
-	pnp->pn_pathlen = 0;
+	pnp->pn_buf = kmem_alloc(sz, KM_SLEEP);
 	pnp->pn_bufsize = sz;
 }
 
@@ -84,6 +84,6 @@ pn_free(struct pathname *pnp)
 {
 	/* pn_bufsize is usually MAXPATHLEN, but may not be */
 	kmem_free(pnp->pn_buf, pnp->pn_bufsize);
-	pnp->pn_path = pnp->pn_buf = NULL;
-	pnp->pn_pathlen = pnp->pn_bufsize = 0;
+	pnp->pn_buf = NULL;
+	pnp->pn_bufsize = 0;
 }

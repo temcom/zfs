@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -7,7 +8,7 @@
 # You may not use this file except in compliance with the License.
 #
 # You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
+# or https://opensource.org/licenses/CDDL-1.0.
 # See the License for the specific language governing permissions
 # and limitations under the License.
 #
@@ -33,10 +34,6 @@
 . $STF_SUITE/tests/functional/cache/cache.kshlib
 
 verify_runnable "global"
-
-if ! is_physical_device $LDEV; then
-	log_unsupported "Only physical disk could be cache device"
-fi
 
 log_must rm -rf $VDIR $VDIR2
 log_must mkdir -p $VDIR $VDIR2

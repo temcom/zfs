@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -23,6 +24,6 @@
 
 verify_runnable "global"
 
-log_must set_tunable64 zfs_multihost_history 0
+log_must set_tunable64 MULTIHOST_HISTORY $MMP_HISTORY_OFF
 
 log_pass "mmp cleanup passed"

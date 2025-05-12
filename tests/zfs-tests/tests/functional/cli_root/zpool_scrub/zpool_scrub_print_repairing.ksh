@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -7,7 +8,7 @@
 # You may not use this file except in compliance with the License.
 #
 # You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
+# or https://opensource.org/licenses/CDDL-1.0.
 # See the License for the specific language governing permissions
 # and limitations under the License.
 #
@@ -43,7 +44,7 @@ log_assert "Verify we see '(repairing)' while scrubbing a bad vdev."
 function cleanup
 {
 	log_must zinject -c all
-	log_must set_tunable64 zfs_scan_vdev_limit $ZFS_SCAN_VDEV_LIMIT_DEFAULT
+	log_must set_tunable64 SCAN_VDEV_LIMIT $ZFS_SCAN_VDEV_LIMIT_DEFAULT
 	zpool scrub -s $TESTPOOL || true
 }
 
@@ -54,7 +55,7 @@ log_must zinject -d $DISK1 -e io -T read -f 100 $TESTPOOL
 
 # Make the scrub slow
 log_must zinject -d $DISK1 -D10:1 $TESTPOOL
-log_must set_tunable64 zfs_scan_vdev_limit $ZFS_SCAN_VDEV_LIMIT_SLOW
+log_must set_tunable64 SCAN_VDEV_LIMIT $ZFS_SCAN_VDEV_LIMIT_SLOW
 
 log_must zpool scrub $TESTPOOL
 

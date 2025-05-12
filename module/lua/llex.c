@@ -1,4 +1,4 @@
-/* BEGIN CSTYLED */
+// SPDX-License-Identifier: MIT
 /*
 ** $Id: llex.c,v 2.63.1.3 2015/02/09 17:56:34 roberto Exp $
 ** Lexical Analyzer
@@ -431,9 +431,12 @@ static int llex (LexState *ls, SemInfo *seminfo) {
         if (sep >= 0) {
           read_long_string(ls, seminfo, sep);
           return TK_STRING;
-        }
-        else if (sep == -1) return '[';
-        else lexerror(ls, "invalid long string delimiter", TK_STRING);
+        } else if (sep == -1) {
+		return '[';
+        } else {
+		lexerror(ls, "invalid long string delimiter", TK_STRING);
+		break;
+	}
       }
       case '=': {
         next(ls);
@@ -474,7 +477,7 @@ static int llex (LexState *ls, SemInfo *seminfo) {
         else if (!lisdigit(ls->current)) return '.';
         /* else go through */
       }
-      /* FALLTHROUGH */
+        zfs_fallthrough;
       case '0': case '1': case '2': case '3': case '4':
       case '5': case '6': case '7': case '8': case '9': {
         read_numeral(ls, seminfo);
@@ -525,4 +528,3 @@ int luaX_lookahead (LexState *ls) {
   ls->lookahead.token = llex(ls, &ls->lookahead.seminfo);
   return ls->lookahead.token;
 }
-/* END CSTYLED */

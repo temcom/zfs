@@ -1,10 +1,10 @@
-#!/bin/bash
+#!/usr/bin/env bash
 #
 # Verify that an assortment of known good reference pools can be imported
-# using different versions of the ZoL code.
+# using different versions of OpenZFS code.
 #
 # By default references pools for the major ZFS implementation will be
-# checked against the most recent ZoL tags and the master development branch.
+# checked against the most recent OpenZFS tags and the master development branch.
 # Alternate tags or branches may be verified with the '-s <src-tag> option.
 # Passing the keyword "installed" will instruct the script to test whatever
 # version is installed.
@@ -39,7 +39,7 @@
 #      -s "zfs-0.6.2 master installed" \
 #      -p "zevo-1.1.1 zol-0.6.2 zol-0.6.2-173 master installed"
 #
-# --------------------- ZFS on Linux Source Versions --------------
+# ------------------------ OpenZFS Source Versions ----------------
 #                 zfs-0.6.2       master          0.6.2-175_g36eb554
 # -----------------------------------------------------------------
 # Clone ZFS       Local		Local		Skip
@@ -54,7 +54,7 @@
 
 BASE_DIR=$(dirname "$0")
 SCRIPT_COMMON=common.sh
-if [ -f "${BASE_DIR}/${SCRIPT_COMMON}" ]; then
+if [[ -f "${BASE_DIR}/${SCRIPT_COMMON}" ]]; then
 	. "${BASE_DIR}/${SCRIPT_COMMON}"
 else
 	echo "Missing helper script ${SCRIPT_COMMON}" && exit 1
@@ -68,9 +68,9 @@ TEST_DIR=$(mktemp -u -d -p /var/tmp zimport.XXXXXXXX)
 KEEP="no"
 VERBOSE="no"
 COLOR="yes"
-REPO="https://github.com/zfsonlinux"
-IMAGES_DIR="$SCRIPTDIR/zfs-images/"
-IMAGES_TAR="https://github.com/zfsonlinux/zfs-images/tarball/master"
+REPO="https://github.com/openzfs"
+IMAGES_DIR="${BASE_DIR}/zfs-images/"
+IMAGES_TAR="https://github.com/openzfs/zfs-images/tarball/master"
 ERROR=0
 
 CONFIG_LOG="configure.log"
@@ -98,7 +98,7 @@ OPTIONS:
 	-c                No color
 	-k                Keep temporary directory
 	-r <repo>         Source repository ($REPO)
-	-s <src-tag>...   Verify ZoL versions with the listed tags
+	-s <src-tag>...   Verify OpenZFS versions with the listed tags
 	-i <pool-dir>     Pool image directory
 	-p <pool-tag>...  Verify pools created with the listed tags
 	-f <path>         Temporary directory to use
@@ -140,7 +140,7 @@ while getopts 'hvckr:s:i:p:f:o:?' OPTION; do
 	o)
 		POOL_CREATE_OPTIONS="$OPTARG"
 		;;
-	?)
+	*)
 		usage
 		exit 1
 		;;
@@ -164,15 +164,13 @@ populate() {
 	local MAX_DIR_SIZE=$2
 	local MAX_FILE_SIZE=$3
 
-	# shellcheck disable=SC2086
-	mkdir -p $ROOT/{a,b,c,d,e,f,g}/{h,i}
+	mkdir -p "$ROOT"/{a,b,c,d,e,f,g}/{h,i}
 	DIRS=$(find "$ROOT")
 
 	for DIR in $DIRS; do
 		COUNT=$((RANDOM % MAX_DIR_SIZE))
 
-		# shellcheck disable=SC2034
-		for i in $(seq $COUNT); do
+		for _ in $(seq "$COUNT"); do
 			FILE=$(mktemp -p "$DIR")
 			SIZE=$((RANDOM % MAX_FILE_SIZE))
 			dd if=/dev/urandom of="$FILE" bs=1k \
@@ -190,7 +188,7 @@ populate "$SRC_DIR" 10 100
 SRC_DIR="$TEST_DIR/src"
 SRC_DIR_ZFS="$SRC_DIR/zfs"
 
-if [ "$COLOR" = "no" ]; then
+if [[ "$COLOR" = "no" ]]; then
 	COLOR_GREEN=""
 	COLOR_BROWN=""
 	COLOR_RED=""
@@ -232,13 +230,13 @@ src_set_vars() {
 	ZFS_DIR="$SRC_DIR_ZFS/$ZFS_TAG"
 	ZFS_URL="$REPO/zfs/tarball/$ZFS_TAG"
 
-	if [ "$TAG" = "installed" ]; then
-		ZPOOL_CMD=$(which zpool)
-		ZFS_CMD=$(which zfs)
+	if [[ "$TAG" = "installed" ]]; then
+		ZPOOL_CMD=$(command -v zpool)
+		ZFS_CMD=$(command -v zfs)
 		ZFS_SH="/usr/share/zfs/zfs.sh"
 	else
-		ZPOOL_CMD="./cmd/zpool/zpool"
-		ZFS_CMD="./cmd/zfs/zfs"
+		ZPOOL_CMD="./zpool"
+		ZFS_CMD="./zfs"
 		ZFS_SH="./scripts/zfs.sh"
 	fi
 }
@@ -275,7 +273,7 @@ pool_create() {
 	pool_set_vars "$1"
 	src_set_vars "$1"
 
-	if [ "$POOL_TAG" != "installed" ]; then
+	if [[ "$POOL_TAG" != "installed" ]]; then
 		cd "$POOL_DIR_SRC" || fail "Failed 'cd $POOL_DIR_SRC'"
 	fi
 
@@ -321,7 +319,7 @@ pool_create() {
 
 # If the zfs-images directory doesn't exist fetch a copy from Github then
 # cache it in the $TEST_DIR and update $IMAGES_DIR.
-if [ ! -d "$IMAGES_DIR" ]; then
+if [[ ! -d "$IMAGES_DIR" ]]; then
 	IMAGES_DIR="$TEST_DIR/zfs-images"
 	mkdir -p "$IMAGES_DIR"
 	curl -sL "$IMAGES_TAR" | \
@@ -333,10 +331,9 @@ fi
 # list of available images for the reserved keyword 'all'.
 for TAG in $POOL_TAGS; do
 
-	if  [ "$TAG" = "all" ]; then
-		# shellcheck disable=SC2010
-		ALL_TAGS=$(ls "$IMAGES_DIR" | grep "tar.bz2" | \
-		    sed 's/.tar.bz2//' | tr '\n' ' ')
+	if  [[ "$TAG" = "all" ]]; then
+		ALL_TAGS=$(echo "$IMAGES_DIR"/*.tar.bz2 | \
+		    sed "s|$IMAGES_DIR/||g;s|.tar.bz2||g")
 		NEW_TAGS="$NEW_TAGS $ALL_TAGS"
 	else
 		NEW_TAGS="$NEW_TAGS $TAG"
@@ -344,7 +341,7 @@ for TAG in $POOL_TAGS; do
 done
 POOL_TAGS="$NEW_TAGS"
 
-if [ "$VERBOSE" = "yes" ]; then
+if [[ "$VERBOSE" = "yes" ]]; then
 	echo "---------------------------- Options ----------------------------"
 	echo "VERBOSE=$VERBOSE"
 	echo "KEEP=$KEEP"
@@ -356,23 +353,23 @@ if [ "$VERBOSE" = "yes" ]; then
 	echo
 fi
 
-if [ ! -d "$TEST_DIR" ]; then
+if [[ ! -d "$TEST_DIR" ]]; then
 	mkdir -p "$TEST_DIR"
 fi
 
-if [ ! -d "$SRC_DIR" ]; then
+if [[ ! -d "$SRC_DIR" ]]; then
 	mkdir -p "$SRC_DIR"
 fi
 
 # Print a header for all tags which are being tested.
-echo "--------------------- ZFS on Linux Source Versions --------------"
+echo "------------------------ OpenZFS Source Versions ----------------"
 printf "%-16s" " "
 for TAG in $SRC_TAGS; do
 	src_set_vars "$TAG"
 
-	if [ "$TAG" = "installed" ]; then
+	if [[ "$TAG" = "installed" ]]; then
 		ZFS_VERSION=$(modinfo zfs | awk '/version:/ { print $2; exit }')
-		if [ -n "$ZFS_VERSION" ]; then
+		if [[ -n "$ZFS_VERSION" ]]; then
 			printf "%-16s" "$ZFS_VERSION"
 		else
 			fail "ZFS is not installed"
@@ -391,21 +388,21 @@ printf "%-16s" "Clone ZFS"
 for TAG in $SRC_TAGS; do
 	src_set_vars "$TAG"
 
-	if [ -d "$ZFS_DIR" ]; then
+	if [[ -d "$ZFS_DIR" ]]; then
 		skip_nonewline
-	elif  [ "$ZFS_TAG" = "installed" ]; then
+	elif  [[ "$ZFS_TAG" = "installed" ]]; then
 		skip_nonewline
 	else
 		cd "$SRC_DIR" || fail "Failed 'cd $SRC_DIR'"
 
-		if [ ! -d "$SRC_DIR_ZFS" ]; then
+		if [[ ! -d "$SRC_DIR_ZFS" ]]; then
 			mkdir -p "$SRC_DIR_ZFS"
 		fi
 
 		git archive --format=tar --prefix="$ZFS_TAG/ $ZFS_TAG" \
 		    -o "$SRC_DIR_ZFS/$ZFS_TAG.tar" &>/dev/null || \
 		    rm "$SRC_DIR_ZFS/$ZFS_TAG.tar"
-		if [ -s "$SRC_DIR_ZFS/$ZFS_TAG.tar" ]; then
+		if [[ -s "$SRC_DIR_ZFS/$ZFS_TAG.tar" ]]; then
 			tar -xf "$SRC_DIR_ZFS/$ZFS_TAG.tar" -C "$SRC_DIR_ZFS"
 			rm "$SRC_DIR_ZFS/$ZFS_TAG.tar"
 			echo -n -e "${COLOR_GREEN}Local${COLOR_RESET}\t\t"
@@ -425,9 +422,9 @@ printf "%-16s" "Build ZFS"
 for TAG in $SRC_TAGS; do
 	src_set_vars "$TAG"
 
-	if [ -f "$ZFS_DIR/module/zfs/zfs.ko" ]; then
+	if [[ -f "$ZFS_DIR/module/zfs/zfs.ko" ]]; then
 		skip_nonewline
-	elif  [ "$ZFS_TAG" = "installed" ]; then
+	elif  [[ "$ZFS_TAG" = "installed" ]]; then
 		skip_nonewline
 	else
 		cd "$ZFS_DIR" || fail "Failed 'cd $ZFS_DIR'"
@@ -457,15 +454,15 @@ for TAG in $POOL_TAGS; do
 	mkdir -p "$POOL_DIR_PRISTINE"
 
 	# Use the existing compressed image if available.
-	if [ -f "$POOL_BZIP" ]; then
+	if [[ -f "$POOL_BZIP" ]]; then
 		tar -xjf "$POOL_BZIP" -C "$POOL_DIR_PRISTINE" \
 		    --strip-components=1 || \
 		    fail "Failed 'tar -xjf $POOL_BZIP"
 	# Use the installed version to create the pool.
-	elif  [ "$TAG" = "installed" ]; then
+	elif  [[ "$TAG" = "installed" ]]; then
 		pool_create "$TAG"
 	# A source build is available to create the pool.
-	elif [ -d "$POOL_DIR_SRC" ]; then
+	elif [[ -d "$POOL_DIR_SRC" ]]; then
 		pool_create "$TAG"
 	else
 		SKIP=1
@@ -474,13 +471,13 @@ for TAG in $POOL_TAGS; do
 	# Verify 'zpool import' works for all listed source versions.
 	for SRC_TAG in $SRC_TAGS; do
 
-		if [ $SKIP -eq 1 ]; then
+		if [[ "$SKIP" -eq 1 ]]; then
 			skip_nonewline
 			continue
 		fi
 
 		src_set_vars "$SRC_TAG"
-		if [ "$SRC_TAG" != "installed" ]; then
+		if [[ "$SRC_TAG" != "installed" ]]; then
 			cd "$ZFS_DIR" || fail "Failed 'cd $ZFS_DIR'"
 		fi
 		$ZFS_SH zfs="spa_config_path=$POOL_DIR_COPY"
@@ -489,12 +486,10 @@ for TAG in $POOL_TAGS; do
 		    "$POOL_DIR_COPY" || \
 		    fail "Failed to copy $POOL_DIR_PRISTINE to $POOL_DIR_COPY"
 		POOL_NAME=$($ZPOOL_CMD import -d "$POOL_DIR_COPY" | \
-		    awk '/pool:/ { print $2; exit 0 }')
+		    awk '/pool:/ { print $2; exit }')
 
-		$ZPOOL_CMD import -N -d "$POOL_DIR_COPY" \
-		   "$POOL_NAME" &>/dev/null
-		# shellcheck disable=SC2181
-		if [ $? -ne 0 ]; then
+		if ! $ZPOOL_CMD import -N -d "$POOL_DIR_COPY"
+		    "$POOL_NAME" &>/dev/null; then
 			fail_nonewline
 			ERROR=1
 		else
@@ -510,8 +505,8 @@ for TAG in $POOL_TAGS; do
 	printf "\n"
 done
 
-if [ "$KEEP" = "no" ]; then
+if [[ "$KEEP" = "no" ]]; then
 	rm -Rf "$TEST_DIR"
 fi
 
-exit $ERROR
+exit "$ERROR"

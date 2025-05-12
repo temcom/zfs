@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -7,7 +8,7 @@
 # You may not use this file except in compliance with the License.
 #
 # You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
+# or https://opensource.org/licenses/CDDL-1.0.
 # See the License for the specific language governing permissions
 # and limitations under the License.
 #
@@ -30,7 +31,7 @@
 #
 # STRATEGY:
 #	1. Set ZPOOL_SCRIPTS_PATH to contain a couple of non-default dirs
-#	2. Make a simple script that echos a key value pair in each dir
+#	2. Make a simple script that echoes a key value pair in each dir
 #	3. Make sure scripts can be run with -c
 #	4. Remove the scripts we created
 

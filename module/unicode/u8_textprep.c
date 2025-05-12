@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: CDDL-1.0
 /*
  * CDDL HEADER START
  *
@@ -6,7 +7,7 @@
  * You may not use this file except in compliance with the License.
  *
  * You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
- * or http://www.opensolaris.org/os/licensing.
+ * or https://opensource.org/licenses/CDDL-1.0.
  * See the License for the specific language governing permissions
  * and limitations under the License.
  *
@@ -23,6 +24,9 @@
  * Use is subject to license terms.
  */
 
+/*
+ * Copyright 2022 MNX Cloud, Inc.
+ */
 
 
 
@@ -36,7 +40,7 @@
  */
 
 #include <sys/types.h>
-#include <sys/strings.h>
+#include <sys/string.h>
 #include <sys/param.h>
 #include <sys/sysmacros.h>
 #include <sys/debug.h>
@@ -46,7 +50,7 @@
 #include <sys/byteorder.h>
 #include <sys/errno.h>
 #include <sys/u8_textprep_data.h>
-
+#include <sys/mod.h>
 
 /* The maximum possible number of bytes in a UTF-8 character. */
 #define	U8_MB_CUR_MAX			(4)
@@ -200,7 +204,7 @@ typedef enum {
 #define	I_				U8_ILLEGAL_CHAR
 #define	O_				U8_OUT_OF_RANGE_CHAR
 
-const int8_t u8_number_of_bytes[0x100] = {
+static const int8_t u8_number_of_bytes[0x100] = {
 	1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,
 	1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,
 	1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,
@@ -213,10 +217,10 @@ const int8_t u8_number_of_bytes[0x100] = {
 /*	80  81  82  83  84  85  86  87  88  89  8A  8B  8C  8D  8E  8F  */
 	I_, I_, I_, I_, I_, I_, I_, I_, I_, I_, I_, I_, I_, I_, I_, I_,
 
-/*  	90  91  92  93  94  95  96  97  98  99  9A  9B  9C  9D  9E  9F  */
+/*	90  91  92  93  94  95  96  97  98  99  9A  9B  9C  9D  9E  9F  */
 	I_, I_, I_, I_, I_, I_, I_, I_, I_, I_, I_, I_, I_, I_, I_, I_,
 
-/*  	A0  A1  A2  A3  A4  A5  A6  A7  A8  A9  AA  AB  AC  AD  AE  AF  */
+/*	A0  A1  A2  A3  A4  A5  A6  A7  A8  A9  AA  AB  AC  AD  AE  AF  */
 	I_, I_, I_, I_, I_, I_, I_, I_, I_, I_, I_, I_, I_, I_, I_, I_,
 
 /*	B0  B1  B2  B3  B4  B5  B6  B7  B8  B9  BA  BB  BC  BD  BE  BF  */
@@ -238,7 +242,7 @@ const int8_t u8_number_of_bytes[0x100] = {
 #undef	I_
 #undef	O_
 
-const uint8_t u8_valid_min_2nd_byte[0x100] = {
+static const uint8_t u8_valid_min_2nd_byte[0x100] = {
 	0,    0,    0,    0,    0,    0,    0,    0,
 	0,    0,    0,    0,    0,    0,    0,    0,
 	0,    0,    0,    0,    0,    0,    0,    0,
@@ -280,7 +284,7 @@ const uint8_t u8_valid_min_2nd_byte[0x100] = {
 	0,    0,    0,    0,    0,    0,    0,    0,
 };
 
-const uint8_t u8_valid_max_2nd_byte[0x100] = {
+static const uint8_t u8_valid_max_2nd_byte[0x100] = {
 	0,    0,    0,    0,    0,    0,    0,    0,
 	0,    0,    0,    0,    0,    0,    0,    0,
 	0,    0,    0,    0,    0,    0,    0,    0,
@@ -330,7 +334,7 @@ const uint8_t u8_valid_max_2nd_byte[0x100] = {
  * specific to UTF-8 and Unicode.
  */
 int
-u8_validate(char *u8str, size_t n, char **list, int flag, int *errnum)
+u8_validate(const char *u8str, size_t n, char **list, int flag, int *errnum)
 {
 	uchar_t *ib;
 	uchar_t *ibtail;
@@ -524,6 +528,7 @@ do_case_conv(int uv, uchar_t *u8s, uchar_t *s, int sz, boolean_t is_it_toupper)
 		for (i = 0; start_id < end_id; start_id++)
 			u8s[i++] = u8_toupper_final_tbl[uv][b3_base + start_id];
 	} else {
+#ifdef U8_STRCMP_CI_LOWER
 		b3_tbl = u8_tolower_b3_tbl[uv][b2][b3].tbl_id;
 		if (b3_tbl == U8_TBL_ELEMENT_NOT_DEF)
 			return ((size_t)sz);
@@ -538,6 +543,9 @@ do_case_conv(int uv, uchar_t *u8s, uchar_t *s, int sz, boolean_t is_it_toupper)
 
 		for (i = 0; start_id < end_id; start_id++)
 			u8s[i++] = u8_tolower_final_tbl[uv][b3_base + start_id];
+#else
+		__builtin_unreachable();
+#endif
 	}
 
 	/*
@@ -865,7 +873,9 @@ do_decomp(size_t uv, uchar_t *u8s, uchar_t *s, int sz,
 		start_id = u8_decomp_b4_16bit_tbl[uv][b3_tbl][b4];
 		end_id = u8_decomp_b4_16bit_tbl[uv][b3_tbl][b4 + 1];
 	} else {
+		// cppcheck-suppress arrayIndexOutOfBoundsCond
 		start_id = u8_decomp_b4_tbl[uv][b3_tbl][b4];
+		// cppcheck-suppress arrayIndexOutOfBoundsCond
 		end_id = u8_decomp_b4_tbl[uv][b3_tbl][b4 + 1];
 	}
 
@@ -884,7 +894,7 @@ do_decomp(size_t uv, uchar_t *u8s, uchar_t *s, int sz,
 	 *	| B0| B1| ... | Bm|
 	 *	+---+---+-...-+---+
 	 *
-	 *	The first byte, B0, is always less then 0xF5 (U8_DECOMP_BOTH).
+	 *	The first byte, B0, is always less than 0xF5 (U8_DECOMP_BOTH).
 	 *
 	 * (2) Canonical decomposition mappings:
 	 *
@@ -1012,7 +1022,9 @@ find_composition_start(size_t uv, uchar_t *s, size_t sz)
 		start_id = u8_composition_b4_16bit_tbl[uv][b3_tbl][b4];
 		end_id = u8_composition_b4_16bit_tbl[uv][b3_tbl][b4 + 1];
 	} else {
+		// cppcheck-suppress arrayIndexOutOfBoundsCond
 		start_id = u8_composition_b4_tbl[uv][b3_tbl][b4];
+		// cppcheck-suppress arrayIndexOutOfBoundsCond
 		end_id = u8_composition_b4_tbl[uv][b3_tbl][b4 + 1];
 	}
 
@@ -1282,8 +1294,12 @@ TRY_THE_NEXT_MARK:
 		saved_l = l - disp[last];
 
 		while (p < oslast) {
-			size = u8_number_of_bytes[*p];
-			if (size <= 1 || (p + size) > oslast)
+			int8_t number_of_bytes = u8_number_of_bytes[*p];
+
+			if (number_of_bytes <= 1)
+				break;
+			size = number_of_bytes;
+			if ((p + size) > oslast)
 				break;
 
 			saved_p = p;
@@ -1374,8 +1390,10 @@ SAFE_RETURN:
  */
 static size_t
 collect_a_seq(size_t uv, uchar_t *u8s, uchar_t **source, uchar_t *slast,
-    boolean_t is_it_toupper, boolean_t is_it_tolower,
-    boolean_t canonical_decomposition, boolean_t compatibility_decomposition,
+    boolean_t is_it_toupper,
+    boolean_t is_it_tolower,
+    boolean_t canonical_decomposition,
+    boolean_t compatibility_decomposition,
     boolean_t canonical_composition,
     int *errnum, u8_normalization_states_t *state)
 {
@@ -1710,7 +1728,7 @@ TURN_STREAM_SAFE:
 }
 
 /*
- * The do_norm_compare() function does string comparion based on Unicode
+ * The do_norm_compare() function does string comparison based on Unicode
  * simple case mappings and Unicode Normalization definitions.
  *
  * It does so by collecting a sequence of character at a time and comparing
@@ -1740,7 +1758,11 @@ do_norm_compare(size_t uv, uchar_t *s1, uchar_t *s2, size_t n1, size_t n2,
 	s2last = s2 + n2;
 
 	is_it_toupper = flag & U8_TEXTPREP_TOUPPER;
+#ifdef U8_STRCMP_CI_LOWER
 	is_it_tolower = flag & U8_TEXTPREP_TOLOWER;
+#else
+	is_it_tolower = 0;
+#endif
 	canonical_decomposition = flag & U8_CANON_DECOMP;
 	compatibility_decomposition = flag & U8_COMPAT_DECOMP;
 	canonical_composition = flag & U8_CANON_COMP;
@@ -1857,12 +1879,22 @@ u8_strcmp(const char *s1, const char *s2, size_t n, int flag, size_t uv,
 	if (flag == 0) {
 		flag = U8_STRCMP_CS;
 	} else {
-		f = flag & (U8_STRCMP_CS | U8_STRCMP_CI_UPPER |
-		    U8_STRCMP_CI_LOWER);
+#ifdef U8_STRCMP_CI_LOWER
+		f = flag & (U8_STRCMP_CS | U8_STRCMP_CI_UPPER
+		    | U8_STRCMP_CI_LOWER);
+#else
+		f = flag & (U8_STRCMP_CS | U8_STRCMP_CI_UPPER);
+#endif
 		if (f == 0) {
 			flag |= U8_STRCMP_CS;
-		} else if (f != U8_STRCMP_CS && f != U8_STRCMP_CI_UPPER &&
-		    f != U8_STRCMP_CI_LOWER) {
+		}
+#ifdef U8_STRCMP_CI_LOWER
+		else if (f != U8_STRCMP_CS && f != U8_STRCMP_CI_UPPER &&
+		    f != U8_STRCMP_CI_LOWER)
+#else
+		else if (f != U8_STRCMP_CS && f != U8_STRCMP_CI_UPPER)
+#endif
+		{
 			*errnum = EBADF;
 			flag = U8_STRCMP_CS;
 		}
@@ -1895,10 +1927,13 @@ u8_strcmp(const char *s1, const char *s2, size_t n, int flag, size_t uv,
 	if (flag == U8_STRCMP_CI_UPPER) {
 		return (do_case_compare(uv, (uchar_t *)s1, (uchar_t *)s2,
 		    n1, n2, B_TRUE, errnum));
-	} else if (flag == U8_STRCMP_CI_LOWER) {
+	}
+#ifdef U8_STRCMP_CI_LOWER
+	else if (flag == U8_STRCMP_CI_LOWER) {
 		return (do_case_compare(uv, (uchar_t *)s1, (uchar_t *)s2,
 		    n1, n2, B_FALSE, errnum));
 	}
+#endif
 
 	return (do_norm_compare(uv, (uchar_t *)s1, (uchar_t *)s2, n1, n2,
 	    flag, errnum));
@@ -1932,11 +1967,13 @@ u8_textprep_str(char *inarray, size_t *inlen, char *outarray, size_t *outlen,
 		return ((size_t)-1);
 	}
 
+#ifdef U8_TEXTPREP_TOLOWER
 	f = flag & (U8_TEXTPREP_TOUPPER | U8_TEXTPREP_TOLOWER);
 	if (f == (U8_TEXTPREP_TOUPPER | U8_TEXTPREP_TOLOWER)) {
 		*errnum = EBADF;
 		return ((size_t)-1);
 	}
+#endif
 
 	f = flag & (U8_CANON_DECOMP | U8_COMPAT_DECOMP | U8_CANON_COMP);
 	if (f && f != U8_TEXTPREP_NFD && f != U8_TEXTPREP_NFC &&
@@ -1961,7 +1998,11 @@ u8_textprep_str(char *inarray, size_t *inlen, char *outarray, size_t *outlen,
 	do_not_ignore_null = !(flag & U8_TEXTPREP_IGNORE_NULL);
 	do_not_ignore_invalid = !(flag & U8_TEXTPREP_IGNORE_INVALID);
 	is_it_toupper = flag & U8_TEXTPREP_TOUPPER;
+#ifdef U8_TEXTPREP_TOLOWER
 	is_it_tolower = flag & U8_TEXTPREP_TOLOWER;
+#else
+	is_it_tolower = 0;
+#endif
 
 	ret_val = 0;
 
@@ -2125,27 +2166,6 @@ u8_textprep_str(char *inarray, size_t *inlen, char *outarray, size_t *outlen,
 	return (ret_val);
 }
 
-#if defined(_KERNEL)
-static int __init
-unicode_init(void)
-{
-	return (0);
-}
-
-static void __exit
-unicode_fini(void)
-{
-}
-
-module_init(unicode_init);
-module_exit(unicode_fini);
-
-MODULE_DESCRIPTION("Unicode implementation");
-MODULE_AUTHOR(ZFS_META_AUTHOR);
-MODULE_LICENSE(ZFS_META_LICENSE);
-MODULE_VERSION(ZFS_META_VERSION "-" ZFS_META_RELEASE);
-
 EXPORT_SYMBOL(u8_validate);
 EXPORT_SYMBOL(u8_strcmp);
 EXPORT_SYMBOL(u8_textprep_str);
-#endif

@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -7,7 +8,7 @@
 # You may not use this file except in compliance with the License.
 #
 # You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
+# or https://opensource.org/licenses/CDDL-1.0.
 # See the License for the specific language governing permissions
 # and limitations under the License.
 #
@@ -43,8 +44,8 @@
 #	2. "-C" only supports "-r" and "-k".
 #	3. "-s" only supports "-r" and "-p".
 #	4. "-c", "-C" and "-s" can NOT be specified together.
-#	5. "-d" can overwirte former "-r".
-#	6. "-r" can overwirte former "-d".
+#	5. "-d" can overwrite former "-r".
+#	6. "-r" can overwrite former "-d".
 #	7. "-0" must be together with "-c".
 #	8. "-d" must be on directory.
 #	9. "-r" must be on directory.

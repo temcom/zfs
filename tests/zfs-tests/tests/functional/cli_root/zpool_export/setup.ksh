@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -7,7 +8,7 @@
 # You may not use this file except in compliance with the License.
 #
 # You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
+# or https://opensource.org/licenses/CDDL-1.0.
 # See the License for the specific language governing permissions
 # and limitations under the License.
 #
@@ -29,9 +30,5 @@
 . $STF_SUITE/tests/functional/cli_root/zpool_export/zpool_export.cfg
 
 DISK=${DISKS%% *}
-
-if ! $(is_physical_device $DISK) ; then
-	log_unsupported "Only partitionable physical disks can be used"
-fi
 
 default_setup $DISK

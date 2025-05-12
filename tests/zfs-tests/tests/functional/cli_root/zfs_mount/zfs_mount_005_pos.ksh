@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -7,7 +8,7 @@
 # You may not use this file except in compliance with the License.
 #
 # You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
+# or https://opensource.org/licenses/CDDL-1.0.
 # See the License for the specific language governing permissions
 # and limitations under the License.
 #
@@ -44,13 +45,15 @@
 # 2. Apply 'zfs set mountpoint=path <filesystem>'.
 # 3. Change directory to that given mountpoint.
 # 3. Invoke 'zfs mount <filesystem>'.
-# 4. Verify that mount succeeds on Linux and fails for other platforms.
+# 4. Verify that mount succeeds on Linux and FreeBSD and fails for other
+#    platforms.
 #
 
 verify_runnable "both"
 
 function cleanup
 {
+	[[ "$PWD" = "$TESTDIR" ]] && cd -
 	log_must zfs set mountpoint=$TESTDIR $TESTPOOL/$TESTFS
 	log_must force_unmount $TESTPOOL/$TESTFS
 	return 0
@@ -74,18 +77,17 @@ cd $TESTDIR || \
 
 zfs $mountcmd $TESTPOOL/$TESTFS
 ret=$?
-if is_linux; then
-    (( ret == 0 )) || \
-        log_fail "'zfs $mountcmd $TESTPOOL/$TESTFS' " \
-            "unexpected return code of $ret."
+if is_linux || is_freebsd; then
+	expected=0
 else
-    (( ret == 1 )) || \
-        log_fail "'zfs $mountcmd $TESTPOOL/$TESTFS' " \
-            "unexpected return code of $ret."
+	expected=1
 fi
+(( ret == expected )) || \
+    log_fail "'zfs $mountcmd $TESTPOOL/$TESTFS' " \
+        "unexpected return code of $ret."
 
 log_note "Make sure the filesystem $TESTPOOL/$TESTFS is unmounted"
-if is_linux; then
+if is_linux || is_freebsd; then
     mounted $TESTPOOL/$TESTFS || \
         log_fail Filesystem $TESTPOOL/$TESTFS is unmounted
 else

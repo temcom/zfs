@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -7,7 +8,7 @@
 # You may not use this file except in compliance with the License.
 #
 # You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
+# or https://opensource.org/licenses/CDDL-1.0.
 # See the License for the specific language governing permissions
 # and limitations under the License.
 #
@@ -42,19 +43,12 @@ verify_runnable "both"
 
 function cleanup
 {
-	if poolexists $MPOOL; then
-		destroy_pool $MPOOL
-	fi
-
-	for file in $VDEV1 $VDEV2; do
-		[[ -f $file ]] && rm -f $file
-	done
-
-	log_must rm -f $TMP_EVENTS_ZED $TMP_EVENTS_ZED
+	poolexists $MPOOL && log_must destroy_pool $MPOOL
+	log_must rm -f $VDEV1 $VDEV2 $TMP_EVENTS_ZED
 	log_must zed_stop
 }
 
-log_assert "Verify ZED handles missed events on when starting"
+log_assert "Verify ZED handles missed events when starting"
 log_onexit cleanup
 
 log_must truncate -s $MINVDEVSIZE $VDEV1 $VDEV2
@@ -62,17 +56,16 @@ log_must truncate -s $MINVDEVSIZE $VDEV1 $VDEV2
 # 1. Create a pool and generate some events.
 log_must truncate -s 0 $ZED_DEBUG_LOG
 log_must zpool events -c
-log_must zpool create $MPOOL mirror $VDEV1 $VDEV2
+log_must zpool create -O compression=off $MPOOL mirror $VDEV1 $VDEV2
 
 # 2. Start the ZED and verify it handles missed events.
 log_must zed_start
-log_must file_wait $ZED_DEBUG_LOG
+log_must file_wait_event $ZED_DEBUG_LOG 'sysevent\.fs\.zfs\.config_sync' 150
 log_must cp $ZED_DEBUG_LOG $TMP_EVENTS_ZED
 
-awk -v event="sysevent.fs.zfs.pool_create" \
-    'BEGIN{FS="\n"; RS=""} $0 ~ event { print $0 }' \
-    $TMP_EVENTS_ZED >$TMP_EVENT_ZED
-log_must grep -q "^ZEVENT_POOL=$MPOOL" $TMP_EVENT_ZED
+log_mustnot awk -v event="sysevent.fs.zfs.pool_create" -v crit="\\nZEVENT_POOL=$MPOOL" \
+    'BEGIN{FS="\n"; RS=""} $0 ~ event && $0 ~ crit { exit 1 }' \
+    $TMP_EVENTS_ZED
 
 # 3. Stop the ZED
 zed_stop
@@ -81,9 +74,7 @@ log_must truncate -s 0 $ZED_DEBUG_LOG
 # 4. Generate additional events.
 log_must zpool offline $MPOOL $VDEV1
 log_must zpool online $MPOOL $VDEV1
-while ! is_pool_resilvered $MPOOL; do
-	sleep 1
-done
+log_must zpool wait -t resilver $MPOOL
 
 log_must zpool scrub $MPOOL
 
@@ -94,12 +85,11 @@ done
 
 # 5. Start the ZED and verify it only handled the new missed events.
 log_must zed_start
-log_must file_wait $ZED_DEBUG_LOG 15
+log_must file_wait_event $ZED_DEBUG_LOG 'sysevent\.fs\.zfs\.resilver_finish' 150
 log_must cp $ZED_DEBUG_LOG $TMP_EVENTS_ZED
 
-log_mustnot grep -q "sysevent.fs.zfs.pool_create" $TMP_EVENTS_ZED
+log_mustnot file_wait_event $ZED_DEBUG_LOG 'sysevent\.fs\.zfs\.pool_create' 30
 log_must grep -q "sysevent.fs.zfs.vdev_online" $TMP_EVENTS_ZED
 log_must grep -q "sysevent.fs.zfs.resilver_start" $TMP_EVENTS_ZED
-log_must grep -q "sysevent.fs.zfs.resilver_finish" $TMP_EVENTS_ZED
 
 log_pass "Verify ZED handles missed events on when starting"

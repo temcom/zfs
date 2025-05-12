@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -7,7 +8,7 @@
 # You may not use this file except in compliance with the License.
 #
 # You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
+# or https://opensource.org/licenses/CDDL-1.0.
 # See the License for the specific language governing permissions
 # and limitations under the License.
 #
@@ -50,6 +51,8 @@ function cleanup_testenv
 	if [[ -n $lofidev ]]; then
 		if is_linux; then
 			losetup -d $lofidev
+		elif is_freebsd; then
+			mdconfig -du ${lofidev#md}
 		else
 			lofiadm -d $lofidev
 		fi
@@ -60,6 +63,7 @@ log_assert "Verify slog device can be disk, file, lofi device or any device " \
 	"that presents a block interface."
 verify_disk_count "$DISKS" 2
 log_onexit cleanup_testenv
+log_must setup
 
 dsk1=${DISKS%% *}
 log_must zpool create $TESTPOOL ${DISKS#$dsk1}
@@ -77,6 +81,8 @@ if is_linux; then
 	lofidev=$(losetup -f)
 	log_must losetup $lofidev ${LDEV2%% *}
 	lofidev=${lofidev##*/}
+elif is_freebsd; then
+	lofidev=$(mdconfig -a ${LDEV2%% *})
 else
 	lofidev=${LDEV2%% *}
 	log_must lofiadm -a $lofidev

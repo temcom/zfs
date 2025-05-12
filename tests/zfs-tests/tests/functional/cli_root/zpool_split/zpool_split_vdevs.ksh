@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # This file and its contents are supplied under the terms of the
 # Common Development and Distribution License ("CDDL"), version 1.0.
@@ -15,6 +16,7 @@
 #
 
 . $STF_SUITE/include/libtest.shlib
+. $STF_SUITE/tests/functional/cli_root/zpool_split/zpool_split.cfg
 . $STF_SUITE/include/math.shlib
 
 #
@@ -32,7 +34,7 @@ function cleanup
 {
 	destroy_pool $TESTPOOL
 	destroy_pool $TESTPOOL2
-	rm -f $FILEDEV_PREFIX*
+	rm -fd $FILEDEV_PREFIX* $altroot
 }
 
 #
@@ -121,10 +123,10 @@ typeset altroot="$TESTDIR/altroot-$TESTPOOL2"
 for config in "${goodconfs[@]}"
 do
 	create_config="${config%% *}"
-	add_config="$(awk '{$1= "";print $0}' <<< $config)"
+	add_config="$(awk '{$1=""; print $0}' <<< $config)"
 	log_must zpool create $TESTPOOL $(pool_config $create_config)
 	for vdev in $add_config; do
-		log_must zpool add $TESTPOOL -f $(pool_config $vdev)
+		log_must zpool add -f $TESTPOOL $(pool_config $vdev)
 	done
 	log_must zpool split -R $altroot $TESTPOOL $TESTPOOL2
 	log_must poolexists $TESTPOOL2
@@ -136,10 +138,10 @@ done
 for config in "${badconfs[@]}"
 do
 	create_config="${config%% *}"
-	add_config="$(awk '{$1= "";print $0}' <<< $config)"
+	add_config="$(awk '{$1=""; print $0}' <<< $config)"
 	log_must zpool create $TESTPOOL $(pool_config $create_config)
 	for vdev in $add_config; do
-		log_must zpool add $TESTPOOL -f $(pool_config $vdev)
+		log_must zpool add -f $TESTPOOL $(pool_config $vdev)
 	done
 	log_mustnot zpool split -R $altroot $TESTPOOL $TESTPOOL2
 	log_mustnot poolexists $TESTPOOL2

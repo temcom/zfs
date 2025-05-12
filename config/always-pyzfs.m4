@@ -3,79 +3,88 @@ dnl # ZFS_AC_PYTHON_MODULE(module_name, [action-if-true], [action-if-false])
 dnl #
 dnl # Checks for Python module. Freely inspired by AX_PYTHON_MODULE
 dnl # https://www.gnu.org/software/autoconf-archive/ax_python_module.html
+dnl # Required by ZFS_AC_CONFIG_ALWAYS_PYZFS.
 dnl #
-AC_DEFUN([ZFS_AC_PYTHON_MODULE],[
-	PYTHON_NAME=`basename $PYTHON`
+AC_DEFUN([ZFS_AC_PYTHON_MODULE], [
+	PYTHON_NAME=${PYTHON##*/}
 	AC_MSG_CHECKING([for $PYTHON_NAME module: $1])
-	$PYTHON -c "import $1" 2>/dev/null
-	if test $? -eq 0;
-	then
+	AS_IF([$PYTHON -c "import $1" 2>/dev/null], [
 		AC_MSG_RESULT(yes)
 		m4_ifvaln([$2], [$2])
-	else
+	], [
 		AC_MSG_RESULT(no)
 		m4_ifvaln([$3], [$3])
-	fi
+	])
 ])
 
 dnl #
-dnl # ZFS_AC_PYTHON_VERSION(version, [action-if-true], [action-if-false])
+dnl # Determines if pyzfs can be built, requires Python 3.6 or later.
 dnl #
-dnl # Verify Python version
-dnl #
-AC_DEFUN([ZFS_AC_PYTHON_VERSION], [
-	AC_MSG_CHECKING([for a version of Python $1])
-	version_check=`$PYTHON -c "import sys; print (sys.version.split()[[0]] $1)"`
-	if test "$version_check" = "True";
-	then
-		AC_MSG_RESULT(yes)
-		m4_ifvaln([$2], [$2])
-	else
-		AC_MSG_RESULT(no)
-		m4_ifvaln([$3], [$3])
-	fi
-
-])
-
 AC_DEFUN([ZFS_AC_CONFIG_ALWAYS_PYZFS], [
-	PYTHON_REQUIRED_VERSION="<= '2.7.x'"
-
 	AC_ARG_ENABLE([pyzfs],
-		AC_HELP_STRING([--enable-pyzfs],
+		AS_HELP_STRING([--enable-pyzfs],
 		[install libzfs_core python bindings @<:@default=check@:>@]),
 		[enable_pyzfs=$enableval],
 		[enable_pyzfs=check])
 
-	AM_PATH_PYTHON([2.7], [], [
+	dnl #
+	dnl # Packages for pyzfs specifically enabled/disabled.
+	dnl #
+	AS_IF([test "x$enable_pyzfs" != xcheck], [
 		AS_IF([test "x$enable_pyzfs" = xyes], [
-			AC_MSG_ERROR("python >= 2.7 is not installed")
-		], [test ! "x$enable_pyzfs" = xno], [
+			DEFINE_PYZFS='--with pyzfs'
+		], [
+			DEFINE_PYZFS='--without pyzfs'
+		])
+	], [
+		AS_IF([test "$PYTHON" != :], [
+			DEFINE_PYZFS=''
+		], [
 			enable_pyzfs=no
+			DEFINE_PYZFS='--without pyzfs'
 		])
 	])
-	AM_CONDITIONAL([HAVE_PYTHON], [test "$PYTHON" != :])
+	AC_SUBST(DEFINE_PYZFS)
 
 	dnl #
-	dnl # Python 2.7.x is supported, other versions (3.5) are not yet
+	dnl # Autodetection disables pyzfs if kernel or srpm config
 	dnl #
 	AS_IF([test "x$enable_pyzfs" = xcheck], [
-		ZFS_AC_PYTHON_VERSION([$PYTHON_REQUIRED_VERSION], [], [
-			AS_IF([test "x$enable_pyzfs" = xyes], [
-				AC_MSG_ERROR("Python $PYTHON_REQUIRED_VERSION is not available")
-			], [test ! "x$enable_pyzfs" = xno], [
+		AS_IF([test "x$ZFS_CONFIG" = xkernel -o "x$ZFS_CONFIG" = xsrpm ], [
 				enable_pyzfs=no
+				AC_MSG_NOTICE([Disabling pyzfs for kernel/srpm config])
+		])
+	])
+
+	dnl #
+	dnl # Python "packaging" (or, failing that, "distlib") module is required to build and install pyzfs
+	dnl #
+	AS_IF([test "x$enable_pyzfs" = xcheck -o "x$enable_pyzfs" = xyes], [
+		ZFS_AC_PYTHON_MODULE([packaging], [], [
+			ZFS_AC_PYTHON_MODULE([distlib], [], [
+				AS_IF([test "x$enable_pyzfs" = xyes], [
+					AC_MSG_ERROR("Python $PYTHON_VERSION packaging and distlib modules are not installed")
+				], [test "x$enable_pyzfs" != xno], [
+					enable_pyzfs=no
+				])
 			])
 		])
 	])
 
 	dnl #
-	dnl # Require python-devel libraries
+	dnl # Require python3-devel libraries
 	dnl #
-	AS_IF([test "x$enable_pyzfs" = xcheck], [
-		AX_PYTHON_DEVEL([$PYTHON_REQUIRED_VERSION], [
-			AS_IF([test "x$enable_pyzfs" = xyes], [
-				AC_MSG_ERROR("Python development library is not available")
-			], [test ! "x$enable_pyzfs" = xno], [
+	AS_IF([test "x$enable_pyzfs" = xcheck  -o "x$enable_pyzfs" = xyes], [
+		AS_CASE([$PYTHON_VERSION],
+			[3.*], [PYTHON_REQUIRED_VERSION=">= '3.6.0'"],
+			[AC_MSG_ERROR("Python $PYTHON_VERSION unknown")]
+		)
+
+		AS_IF([test "x$enable_pyzfs" = xyes], [
+			AX_PYTHON_DEVEL([$PYTHON_REQUIRED_VERSION])
+		], [
+			AX_PYTHON_DEVEL([$PYTHON_REQUIRED_VERSION], [true])
+			AS_IF([test "x$ax_python_devel_found" = xno], [
 				enable_pyzfs=no
 			])
 		])
@@ -84,11 +93,11 @@ AC_DEFUN([ZFS_AC_CONFIG_ALWAYS_PYZFS], [
 	dnl #
 	dnl # Python "setuptools" module is required to build and install pyzfs
 	dnl #
-	AS_IF([test "x$enable_pyzfs" = xcheck], [
+	AS_IF([test "x$enable_pyzfs" = xcheck -o "x$enable_pyzfs" = xyes], [
 		ZFS_AC_PYTHON_MODULE([setuptools], [], [
 			AS_IF([test "x$enable_pyzfs" = xyes], [
-				AC_MSG_ERROR("python-setuptools is not installed")
-			], [test ! "x$enable_pyzfs" = xno], [
+				AC_MSG_ERROR("Python $PYTHON_VERSION setuptools is not installed")
+			], [test "x$enable_pyzfs" != xno], [
 				enable_pyzfs=no
 			])
 		])
@@ -97,11 +106,11 @@ AC_DEFUN([ZFS_AC_CONFIG_ALWAYS_PYZFS], [
 	dnl #
 	dnl # Python "cffi" module is required to run pyzfs
 	dnl #
-	AS_IF([test "x$enable_pyzfs" = xcheck], [
+	AS_IF([test "x$enable_pyzfs" = xcheck -o "x$enable_pyzfs" = xyes], [
 		ZFS_AC_PYTHON_MODULE([cffi], [], [
 			AS_IF([test "x$enable_pyzfs" = xyes], [
-				AC_MSG_ERROR("python-cffi is not installed")
-			], [test ! "x$enable_pyzfs" = xno], [
+				AC_MSG_ERROR("Python $PYTHON_VERSION cffi is not installed")
+			], [test "x$enable_pyzfs" != xno], [
 				enable_pyzfs=no
 			])
 		])
@@ -112,14 +121,10 @@ AC_DEFUN([ZFS_AC_CONFIG_ALWAYS_PYZFS], [
 	dnl #
 	AS_IF([test "x$enable_pyzfs" = xcheck], [enable_pyzfs=yes])
 
-	AM_CONDITIONAL([PYZFS_ENABLED], [test x$enable_pyzfs = xyes])
+	AM_CONDITIONAL([PYZFS_ENABLED], [test "x$enable_pyzfs" = xyes])
 	AC_SUBST([PYZFS_ENABLED], [$enable_pyzfs])
-
-	AS_IF([test "x$enable_pyzfs" = xyes], [
-		DEFINE_PYZFS='--define "_pyzfs 1"'
-	],[
-		DEFINE_PYZFS=''
-	])
-	AC_SUBST(DEFINE_PYZFS)
 	AC_SUBST(pythonsitedir, [$PYTHON_SITE_PKG])
+
+	AC_MSG_CHECKING([whether to enable pyzfs: ])
+	AC_MSG_RESULT($enable_pyzfs)
 ])

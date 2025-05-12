@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -7,7 +8,7 @@
 # You may not use this file except in compliance with the License.
 #
 # You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
+# or https://opensource.org/licenses/CDDL-1.0.
 # See the License for the specific language governing permissions
 # and limitations under the License.
 #
@@ -68,7 +69,7 @@ for i in $files ; do
 	test_zpool_script "$i" "$testpool" "zpool iostat -Pv -c"
 done
 
-# Test that we can run multiple scripts separated with a commma by running
+# Test that we can run multiple scripts separated with a comma by running
 # all the scripts in a single -c line.
 allscripts="$(echo $scripts | sed -r 's/[[:blank:]]+/,/g')"
 test_zpool_script "$allscripts" "$testpool" "zpool iostat -Pv -c"

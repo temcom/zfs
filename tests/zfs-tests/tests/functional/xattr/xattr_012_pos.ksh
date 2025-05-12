@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -7,7 +8,7 @@
 # You may not use this file except in compliance with the License.
 #
 # You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
+# or https://opensource.org/licenses/CDDL-1.0.
 # See the License for the specific language governing permissions
 # and limitations under the License.
 #
@@ -47,19 +48,9 @@
 
 function cleanup {
 	log_must rm $TESTDIR/myfile.$$
-}
-
-function get_pool_size {
-	poolname=$1
-	psize=$(zpool list -H -o allocated $poolname)
-	if [[ $psize == *[mM] ]]
-	then
-		returnvalue=$(echo $psize | sed -e 's/m//g' -e 's/M//g')
-		returnvalue=$((returnvalue * 1024))
-	else
-		returnvalue=$(echo $psize | sed -e 's/k//g' -e 's/K//g')
+	if is_freebsd; then
+		log_must rm /tmp/xattr.$$
 	fi
-	echo $returnvalue
 }
 
 log_assert "xattr file sizes count towards normal disk usage"
@@ -74,12 +65,22 @@ if is_global_zone
 then
 	# get pool and filesystem sizes. Since we're starting with an empty
 	# pool, the usage should be small - a few k.
-	POOL_SIZE=$(get_pool_size $TESTPOOL)
+	POOL_SIZE=$(get_pool_prop allocated $TESTPOOL)
 fi
 
-FS_SIZE=$(zfs get -p -H -o value used $TESTPOOL/$TESTFS)
+FS_SIZE=$(get_prop used $TESTPOOL/$TESTFS)
 
-if is_linux; then
+if is_freebsd; then
+	# FreeBSD setextattr has awful scaling with respect to input size.
+	# It reallocs after every 1024 bytes. For now we'll just break up
+	# the 200MB into 10 20MB attributes, but this test could be revisited
+	# if someone cared about large extattrs and improves setextattr -i.
+	log_must mkfile 20m /tmp/xattr.$$
+	for i in {0..10}; do
+		log_must eval "set_xattr_stdin xattr$i $TESTDIR/myfile.$$ \
+		    < /tmp/xattr.$$"
+	done
+elif is_linux; then
 	# Linux setxattr() syscalls limits individual xattrs to 64k.  Create
 	# 100 files, with 128 xattrs each of size 16k.  100*128*16k=200m
 	log_must xattrtest -k -f 100 -x 128 -s 16384 -p $TESTDIR
@@ -93,7 +94,7 @@ sync_pool
 # now check to see if our pool disk usage has increased
 if is_global_zone
 then
-	NEW_POOL_SIZE=$(get_pool_size $TESTPOOL)
+	NEW_POOL_SIZE=$(get_pool_prop allocated $TESTPOOL)
 	(($NEW_POOL_SIZE <= $POOL_SIZE)) && \
 	    log_fail "The new pool size $NEW_POOL_SIZE was less \
             than or equal to the old pool size $POOL_SIZE."
@@ -101,7 +102,7 @@ then
 fi
 
 # also make sure our filesystem usage has increased
-NEW_FS_SIZE=$(zfs get -p -H -o value used $TESTPOOL/$TESTFS)
+NEW_FS_SIZE=$(get_prop used $TESTPOOL/$TESTFS)
 (($NEW_FS_SIZE <= $FS_SIZE)) && \
     log_fail "The new filesystem size $NEW_FS_SIZE was less \
     than or equal to the old filesystem size $FS_SIZE."

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: CDDL-1.0
 /*
  * CDDL HEADER START
  *
@@ -6,7 +7,7 @@
  * You may not use this file except in compliance with the License.
  *
  * You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
- * or http://www.opensolaris.org/os/licensing.
+ * or https://opensource.org/licenses/CDDL-1.0.
  * See the License for the specific language governing permissions
  * and limitations under the License.
  *
@@ -29,6 +30,7 @@
 #include <sys/zfs_sa.h>
 #include <sys/dmu_objset.h>
 #include <sys/sa_impl.h>
+#include <sys/zfeature.h>
 
 /*
  * ZPL attribute registration table.
@@ -43,7 +45,7 @@
  * this version of ZFS won't change or delete them.
  */
 
-sa_attr_reg_t zfs_attr_table[ZPL_END+1] = {
+const sa_attr_reg_t zfs_attr_table[ZPL_END+1] = {
 	{"ZPL_ATIME", sizeof (uint64_t) * 2, SA_UINT64_ARRAY, 0},
 	{"ZPL_MTIME", sizeof (uint64_t) * 2, SA_UINT64_ARRAY, 1},
 	{"ZPL_CTIME", sizeof (uint64_t) * 2, SA_UINT64_ARRAY, 2},
@@ -69,9 +71,12 @@ sa_attr_reg_t zfs_attr_table[ZPL_END+1] = {
 	{NULL, 0, 0, 0}
 };
 
+
 #ifdef _KERNEL
+static int zfs_zil_saxattr = 1;
+
 int
-zfs_sa_readlink(znode_t *zp, uio_t *uio)
+zfs_sa_readlink(znode_t *zp, zfs_uio_t *uio)
 {
 	dmu_buf_t *db = sa_get_db(zp->z_sa_hdl);
 	size_t bufsz;
@@ -79,15 +84,16 @@ zfs_sa_readlink(znode_t *zp, uio_t *uio)
 
 	bufsz = zp->z_size;
 	if (bufsz + ZFS_OLD_ZNODE_PHYS_SIZE <= db->db_size) {
-		error = uiomove((caddr_t)db->db_data +
+		error = zfs_uiomove((caddr_t)db->db_data +
 		    ZFS_OLD_ZNODE_PHYS_SIZE,
-		    MIN((size_t)bufsz, uio->uio_resid), UIO_READ, uio);
+		    MIN((size_t)bufsz, zfs_uio_resid(uio)), UIO_READ, uio);
 	} else {
 		dmu_buf_t *dbp;
 		if ((error = dmu_buf_hold(ZTOZSB(zp)->z_os, zp->z_id,
 		    0, FTAG, &dbp, DMU_READ_NO_PREFETCH)) == 0) {
-			error = uiomove(dbp->db_data,
-			    MIN((size_t)bufsz, uio->uio_resid), UIO_READ, uio);
+			error = zfs_uiomove(dbp->db_data,
+			    MIN((size_t)bufsz, zfs_uio_resid(uio)), UIO_READ,
+			    uio);
 			dmu_buf_rele(dbp, FTAG);
 		}
 	}
@@ -102,8 +108,8 @@ zfs_sa_symlink(znode_t *zp, char *link, int len, dmu_tx_t *tx)
 	if (ZFS_OLD_ZNODE_PHYS_SIZE + len <= dmu_bonus_max()) {
 		VERIFY0(dmu_set_bonus(db, len + ZFS_OLD_ZNODE_PHYS_SIZE, tx));
 		if (len) {
-			bcopy(link, (caddr_t)db->db_data +
-			    ZFS_OLD_ZNODE_PHYS_SIZE, len);
+			memcpy((caddr_t)db->db_data +
+			    ZFS_OLD_ZNODE_PHYS_SIZE, link, len);
 		}
 	} else {
 		dmu_buf_t *dbp;
@@ -115,7 +121,7 @@ zfs_sa_symlink(znode_t *zp, char *link, int len, dmu_tx_t *tx)
 		dmu_buf_will_dirty(dbp, tx);
 
 		ASSERT3U(len, <=, dbp->db_size);
-		bcopy(link, dbp->db_data, len);
+		memcpy(dbp->db_data, link, len);
 		dmu_buf_rele(dbp, FTAG);
 	}
 }
@@ -218,13 +224,14 @@ zfs_sa_get_xattr(znode_t *zp)
 }
 
 int
-zfs_sa_set_xattr(znode_t *zp)
+zfs_sa_set_xattr(znode_t *zp, const char *name, const void *value, size_t vsize)
 {
 	zfsvfs_t *zfsvfs = ZTOZSB(zp);
+	zilog_t *zilog;
 	dmu_tx_t *tx;
 	char *obj;
 	size_t size;
-	int error;
+	int error, logsaxattr = 0;
 
 	ASSERT(RW_WRITE_HELD(&zp->z_xattr_lock));
 	ASSERT(zp->z_xattr_cached);
@@ -243,17 +250,32 @@ zfs_sa_set_xattr(znode_t *zp)
 	if (error)
 		goto out_free;
 
+	zilog = zfsvfs->z_log;
+
+	/*
+	 * Users enable ZIL logging of xattr=sa operations by enabling the
+	 * SPA_FEATURE_ZILSAXATTR feature on the pool. Feature is activated
+	 * during zil_process_commit_list/zil_create, if enabled.
+	 */
+	if (spa_feature_is_enabled(zfsvfs->z_os->os_spa,
+	    SPA_FEATURE_ZILSAXATTR) && zfs_zil_saxattr)
+		logsaxattr = 1;
+
 	tx = dmu_tx_create(zfsvfs->z_os);
 	dmu_tx_hold_sa_create(tx, size);
 	dmu_tx_hold_sa(tx, zp->z_sa_hdl, B_TRUE);
 
-	error = dmu_tx_assign(tx, TXG_WAIT);
+	error = dmu_tx_assign(tx, DMU_TX_WAIT);
 	if (error) {
 		dmu_tx_abort(tx);
 	} else {
 		int count = 0;
 		sa_bulk_attr_t bulk[2];
 		uint64_t ctime[2];
+
+		if (logsaxattr)
+			zfs_log_setsaxattr(zilog, tx, TX_SETSAXATTR, zp, name,
+			    value, vsize);
 
 		zfs_tstamp_update_setup(zp, STATE_CHANGED, NULL, ctime);
 		SA_ADD_BULK_ATTR(bulk, count, SA_ZPL_DXATTR(zfsvfs),
@@ -263,6 +285,8 @@ zfs_sa_set_xattr(znode_t *zp)
 		VERIFY0(sa_bulk_update(zp->z_sa_hdl, bulk, count, tx));
 
 		dmu_tx_commit(tx);
+		if (logsaxattr && zfsvfs->z_os->os_sync == ZFS_SYNC_ALWAYS)
+			zil_commit(zilog, 0);
 	}
 out_free:
 	vmem_free(obj, size);
@@ -300,7 +324,7 @@ zfs_sa_upgrade(sa_handle_t *hdl, dmu_tx_t *tx)
 	 * and ready the ACL would require special "locked"
 	 * interfaces that would be messy
 	 */
-	if (zp->z_acl_cached == NULL || S_ISLNK(ZTOI(zp)->i_mode))
+	if (zp->z_acl_cached == NULL || Z_ISLNK(ZTOTYPE(zp)))
 		return;
 
 	/*
@@ -369,13 +393,13 @@ zfs_sa_upgrade(sa_handle_t *hdl, dmu_tx_t *tx)
 	    &ctime, 16);
 	SA_ADD_BULK_ATTR(sa_attrs, count, SA_ZPL_CRTIME(zfsvfs), NULL,
 	    &crtime, 16);
-	links = ZTOI(zp)->i_nlink;
+	links = ZTONLNK(zp);
 	SA_ADD_BULK_ATTR(sa_attrs, count, SA_ZPL_LINKS(zfsvfs), NULL,
 	    &links, 8);
 	if (dmu_objset_projectquota_enabled(hdl->sa_os))
 		SA_ADD_BULK_ATTR(sa_attrs, count, SA_ZPL_PROJID(zfsvfs), NULL,
 		    &zp->z_projid, 8);
-	if (S_ISBLK(ZTOI(zp)->i_mode) || S_ISCHR(ZTOI(zp)->i_mode))
+	if (Z_ISBLK(ZTOTYPE(zp)) || Z_ISCHR(ZTOTYPE(zp)))
 		SA_ADD_BULK_ATTR(sa_attrs, count, SA_ZPL_RDEV(zfsvfs), NULL,
 		    &rdev, 8);
 	SA_ADD_BULK_ATTR(sa_attrs, count, SA_ZPL_DACL_COUNT(zfsvfs), NULL,
@@ -395,8 +419,9 @@ zfs_sa_upgrade(sa_handle_t *hdl, dmu_tx_t *tx)
 	/* if scanstamp then add scanstamp */
 
 	if (zp->z_pflags & ZFS_BONUS_SCANSTAMP) {
-		bcopy((caddr_t)db->db_data + ZFS_OLD_ZNODE_PHYS_SIZE,
-		    scanstamp, AV_SCANSTAMP_SZ);
+		memcpy(scanstamp,
+		    (caddr_t)db->db_data + ZFS_OLD_ZNODE_PHYS_SIZE,
+		    AV_SCANSTAMP_SZ);
 		SA_ADD_BULK_ATTR(sa_attrs, count, SA_ZPL_SCANSTAMP(zfsvfs),
 		    NULL, scanstamp, AV_SCANSTAMP_SZ);
 		zp->z_pflags &= ~ZFS_BONUS_SCANSTAMP;
@@ -431,6 +456,9 @@ zfs_sa_upgrade_txholds(dmu_tx_t *tx, znode_t *zp)
 		    DMU_OBJECT_END);
 	}
 }
+
+ZFS_MODULE_PARAM(zfs, zfs_, zil_saxattr, INT, ZMOD_RW,
+	"Disable xattr=sa extended attribute logging in ZIL by settng 0.");
 
 EXPORT_SYMBOL(zfs_attr_table);
 EXPORT_SYMBOL(zfs_sa_readlink);

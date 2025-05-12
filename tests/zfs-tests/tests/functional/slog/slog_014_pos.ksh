@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -7,7 +8,7 @@
 # You may not use this file except in compliance with the License.
 #
 # You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
+# or https://opensource.org/licenses/CDDL-1.0.
 # See the License for the specific language governing permissions
 # and limitations under the License.
 #
@@ -44,6 +45,7 @@
 verify_runnable "global"
 
 log_assert "log device can survive when one of the pool device get corrupted."
+log_must setup
 
 for type in "mirror" "raidz" "raidz2"; do
 	for spare in "" "spare"; do
@@ -57,13 +59,13 @@ for type in "mirror" "raidz" "raidz2"; do
                 # Ensure the file has been synced out before attempting to
                 # corrupt its contents.
                 #
-                sync
+                sync_all_pools
 
 		#
 		# Corrupt a pool device to make the pool DEGRADED
 		# The oseek value below is to skip past the vdev label.
 		#
-		if is_linux; then
+		if is_linux || is_freebsd; then
 			log_must dd if=/dev/urandom of=$VDIR/a bs=1024k \
 			   seek=4 conv=notrunc count=50
 		else
@@ -75,11 +77,7 @@ for type in "mirror" "raidz" "raidz2"; do
 		log_must zpool offline $TESTPOOL $VDIR/a
 		log_must wait_for_degraded $TESTPOOL
 
-		zpool status -v $TESTPOOL | grep logs | \
-			grep "DEGRADED" 2>&1 >/dev/null
-		if (( $? == 0 )); then
-			log_fail "log device should display correct status"
-		fi
+		log_mustnot eval "zpool status -v $TESTPOOL | grep logs | grep -q \"DEGRADED\""
 
 		log_must zpool online $TESTPOOL $VDIR/a
 		log_must zpool destroy -f $TESTPOOL

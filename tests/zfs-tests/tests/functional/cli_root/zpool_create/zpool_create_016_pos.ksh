@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -7,7 +8,7 @@
 # You may not use this file except in compliance with the License.
 #
 # You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
+# or https://opensource.org/licenses/CDDL-1.0.
 # See the License for the specific language governing permissions
 # and limitations under the License.
 #
@@ -41,20 +42,14 @@
 # STRATEGY:
 # 1. delete all devices in the swap
 # 2. create a zpool
-# 3. Verify the creation is successed.
+# 3. Verify the creation was successful
 #
 
 verify_runnable "global"
 
-if is_linux; then
-	log_unsupported "Test case isn't useful under Linux."
-fi
-
 function cleanup
 {
-	if poolexists $TESTPOOL; then
-		destroy_pool $TESTPOOL
-	fi
+	poolexists $TESTPOOL && destroy_pool $TESTPOOL
 
 	#recover swap devices
 	FSTAB=$TEST_BASE_DIR/fstab_$$
@@ -73,28 +68,20 @@ function cleanup
 	fi
 }
 
-if [[ -n $DISK ]]; then
-	disk=$DISK
-else
-	disk=$DISK0
-fi
-typeset pool_dev=${disk}${SLICE_PREFIX}${SLICE0}
-typeset swap_disks=$(swap -l | grep -v "swapfile" | awk '{print $1}')
-typeset dump_device=$(dumpadm | grep "Dump device" | awk '{print $3}')
+typeset swap_disks=$(swap -l | awk '!/swapfile/ {print $1}')
+typeset dump_device=$(dumpadm | awk '/Dump device/ {print $3}')
 
 log_assert "'zpool create' should success with no device in swap."
 log_onexit cleanup
 
 for sdisk in $swap_disks; do
 	log_note "Executing: swap -d $sdisk"
-	swap -d $sdisk >/dev/null 2>&1;
-	if [[ $? != 0 ]]; then
+	swap -d $sdisk >/dev/null 2>&1 ||
 		log_untested "Unable to delete swap device $sdisk because of" \
 				"insufficient RAM"
-	fi
 done
 
-log_must zpool create $TESTPOOL $pool_dev
+log_must zpool create $TESTPOOL $DISK0
 log_must zpool destroy $TESTPOOL
 
 log_pass "'zpool create' passed as expected with applicable scenario."

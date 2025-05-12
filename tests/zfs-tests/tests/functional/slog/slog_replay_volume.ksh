@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -7,7 +8,7 @@
 # You may not use this file except in compliance with the License.
 #
 # You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
+# or https://opensource.org/licenses/CDDL-1.0.
 # See the License for the specific language governing permissions
 # and limitations under the License.
 #
@@ -61,10 +62,11 @@ verify_runnable "global"
 
 VOLUME=$ZVOL_DEVDIR/$TESTPOOL/$TESTVOL
 MNTPNT=$TESTDIR/$TESTVOL
+FSTYPE=none
 
 function cleanup_volume
 {
-	if ismounted $MNTPNT ext4; then
+	if ismounted $MNTPNT $FSTYPE; then
 		log_must umount $MNTPNT
 		rmdir $MNTPNT
 	fi
@@ -76,6 +78,7 @@ function cleanup_volume
 
 log_assert "Replay of intent log succeeds."
 log_onexit cleanup_volume
+log_must setup
 
 #
 # 1. Create an empty volume (TESTVOL), set sync=always, and format
@@ -86,12 +89,21 @@ log_must zfs create -V 128M $TESTPOOL/$TESTVOL
 log_must zfs set compression=on $TESTPOOL/$TESTVOL
 log_must zfs set sync=always $TESTPOOL/$TESTVOL
 log_must mkdir -p $TESTDIR
-log_must block_device_wait
-echo "y" | newfs -t ext4 -v $VOLUME
-log_must mkdir -p $MNTPNT
-log_must mount -o discard $VOLUME $MNTPNT
-log_must rmdir $MNTPNT/lost+found
-log_must zpool sync
+block_device_wait
+if is_linux; then
+	# ext4 only on Linux
+	log_must new_fs -t ext4 -v $VOLUME
+	log_must mkdir -p $MNTPNT
+	log_must mount -o discard $VOLUME $MNTPNT
+	FSTYPE=ext4
+	log_must rmdir $MNTPNT/lost+found
+else
+	log_must new_fs $VOLUME
+	log_must mkdir -p $MNTPNT
+	log_must mount $VOLUME $MNTPNT
+	FSTYPE=$NEWFS_DEFAULT_FS
+fi
+sync_all_pools
 
 #
 # 2. Freeze TESTVOL
@@ -115,19 +127,21 @@ log_must dd if=/dev/urandom of=$MNTPNT/throughput-128k bs=128k count=1
 log_must dd if=/dev/urandom of=$MNTPNT/holes bs=128k count=8
 log_must dd if=/dev/zero of=$MNTPNT/holes bs=128k count=2 seek=2 conv=notrunc
 
-# TX_TRUNCATE
-if fallocate --punch-hole 2>&1 | grep -q "unrecognized option"; then
-	log_note "fallocate(1) does not support --punch-hole"
-else
-	log_must dd if=/dev/urandom of=$MNTPNT/discard bs=128k count=16
-	log_must fallocate --punch-hole -l 128K -o 512K $MNTPNT/discard
-	log_must fallocate --punch-hole -l 512K -o 1M $MNTPNT/discard
+if is_linux; then
+	# TX_TRUNCATE
+	if fallocate --punch-hole 2>&1 | grep -q "unrecognized option"; then
+		log_note "fallocate(1) does not support --punch-hole"
+	else
+		log_must dd if=/dev/urandom of=$MNTPNT/discard bs=128k count=16
+		log_must fallocate --punch-hole -l 128K -o 512K $MNTPNT/discard
+		log_must fallocate --punch-hole -l 512K -o 1M $MNTPNT/discard
+	fi
 fi
 
 #
 # 4. Generate checksums for all ext4 files.
 #
-log_must sha256sum -b $MNTPNT/* >$TESTDIR/checksum
+typeset checksum=$(cat $MNTPNT/* | xxh128digest)
 
 #
 # 5. Unmount filesystem and export the pool
@@ -149,7 +163,7 @@ log_must zpool export $TESTPOOL
 # `zpool import -f` because we can't write a frozen pool's labels!
 #
 log_must zpool import -f $TESTPOOL
-log_must block_device_wait
+block_device_wait
 log_must mount $VOLUME $MNTPNT
 
 #
@@ -159,6 +173,8 @@ log_note "Verify current block usage:"
 log_must zdb -bcv $TESTPOOL
 
 log_note "Verify checksums"
-log_must sha256sum -c $TESTDIR/checksum
+typeset checksum1=$(cat $MNTPNT/* | xxh128digest)
+[[ "$checksum1" == "$checksum" ]] || \
+    log_fail "checksum mismatch ($checksum1 != $checksum)"
 
 log_pass "Replay of intent log succeeds."

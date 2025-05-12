@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -7,7 +8,7 @@
 # You may not use this file except in compliance with the License.
 #
 # You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
+# or https://opensource.org/licenses/CDDL-1.0.
 # See the License for the specific language governing permissions
 # and limitations under the License.
 #
@@ -22,6 +23,7 @@
 
 #
 # Copyright 2017, loli10K. All rights reserved.
+# Copyright (c) 2020 by Delphix. All rights reserved.
 #
 
 . $STF_SUITE/include/libtest.shlib
@@ -41,6 +43,7 @@ verify_runnable "global"
 
 function cleanup
 {
+	log_must set_tunable32 VDEV_FILE_PHYSICAL_ASHIFT $orig_ashift
 	destroy_pool $TESTPOOL1
 	rm -f $disk
 }
@@ -52,7 +55,15 @@ log_onexit cleanup
 
 log_assert "zpool set can modify 'ashift' property"
 
-disk=$TEST_BASE_DIR/$FILEDISK0
+orig_ashift=$(get_tunable VDEV_FILE_PHYSICAL_ASHIFT)
+#
+# Set the file vdev's ashift to the max. Overriding
+# the ashift using the -o ashift property should still
+# be honored.
+#
+log_must set_tunable32 VDEV_FILE_PHYSICAL_ASHIFT 16
+
+disk=$TEST_BASE_DIR/disk
 log_must mkfile $SIZE $disk
 log_must zpool create $TESTPOOL1 $disk
 

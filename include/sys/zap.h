@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: CDDL-1.0
 /*
  * CDDL HEADER START
  *
@@ -6,7 +7,7 @@
  * You may not use this file except in compliance with the License.
  *
  * You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
- * or http://www.opensolaris.org/os/licensing.
+ * or https://opensource.org/licenses/CDDL-1.0.
  * See the License for the specific language governing permissions
  * and limitations under the License.
  *
@@ -21,7 +22,7 @@
 
 /*
  * Copyright (c) 2005, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright (c) 2013 by Delphix. All rights reserved.
+ * Copyright (c) 2012, 2018 by Delphix. All rights reserved.
  * Copyright 2017 Nexenta Systems, Inc.
  */
 
@@ -110,7 +111,12 @@ typedef enum zap_flags {
 	 * already randomly distributed.
 	 */
 	ZAP_FLAG_PRE_HASHED_KEY = 1 << 2,
+#if defined(__linux__) && defined(_KERNEL)
+} zfs_zap_flags_t;
+#define	zap_flags_t	zfs_zap_flags_t
+#else
 } zap_flags_t;
+#endif
 
 /*
  * Create a new zapobj with no attributes and return its object number.
@@ -131,6 +137,11 @@ uint64_t zap_create_flags_dnsize(objset_t *os, int normflags,
     zap_flags_t flags, dmu_object_type_t ot, int leaf_blockshift,
     int indirect_blockshift, dmu_object_type_t bonustype, int bonuslen,
     int dnodesize, dmu_tx_t *tx);
+uint64_t zap_create_hold(objset_t *os, int normflags, zap_flags_t flags,
+    dmu_object_type_t ot, int leaf_blockshift, int indirect_blockshift,
+    dmu_object_type_t bonustype, int bonuslen, int dnodesize,
+    dnode_t **allocated_dnode, const void *tag, dmu_tx_t *tx);
+
 uint64_t zap_create_link(objset_t *os, dmu_object_type_t ot,
     uint64_t parent_obj, const char *name, dmu_tx_t *tx);
 uint64_t zap_create_link_dnsize(objset_t *os, dmu_object_type_t ot,
@@ -139,8 +150,8 @@ uint64_t zap_create_link_dnsize(objset_t *os, dmu_object_type_t ot,
 /*
  * Initialize an already-allocated object.
  */
-void mzap_create_impl(objset_t *os, uint64_t obj, int normflags,
-    zap_flags_t flags, dmu_tx_t *tx);
+void mzap_create_impl(dnode_t *dn, int normflags, zap_flags_t flags,
+    dmu_tx_t *tx);
 
 /*
  * Create a new zapobj with no attributes from the given (unallocated)
@@ -213,9 +224,14 @@ int zap_lookup_norm(objset_t *ds, uint64_t zapobj, const char *name,
     boolean_t *normalization_conflictp);
 int zap_lookup_uint64(objset_t *os, uint64_t zapobj, const uint64_t *key,
     int key_numints, uint64_t integer_size, uint64_t num_integers, void *buf);
+int zap_lookup_uint64_by_dnode(dnode_t *dn, const uint64_t *key,
+    int key_numints, uint64_t integer_size, uint64_t num_integers, void *buf);
 int zap_contains(objset_t *ds, uint64_t zapobj, const char *name);
 int zap_prefetch(objset_t *os, uint64_t zapobj, const char *name);
+int zap_prefetch_object(objset_t *os, uint64_t zapobj);
 int zap_prefetch_uint64(objset_t *os, uint64_t zapobj, const uint64_t *key,
+    int key_numints);
+int zap_prefetch_uint64_by_dnode(dnode_t *dn, const uint64_t *key,
     int key_numints);
 
 int zap_lookup_by_dnode(dnode_t *dn, const char *name,
@@ -224,9 +240,6 @@ int zap_lookup_norm_by_dnode(dnode_t *dn, const char *name,
     uint64_t integer_size, uint64_t num_integers, void *buf,
     matchtype_t mt, char *realname, int rn_len,
     boolean_t *ncp);
-
-int zap_count_write_by_dnode(dnode_t *dn, const char *name,
-    int add, zfs_refcount_t *towrite, zfs_refcount_t *tooverwrite);
 
 /*
  * Create an attribute with the given name and value.
@@ -243,6 +256,9 @@ int zap_add_by_dnode(dnode_t *dn, const char *key,
 int zap_add_uint64(objset_t *ds, uint64_t zapobj, const uint64_t *key,
     int key_numints, int integer_size, uint64_t num_integers,
     const void *val, dmu_tx_t *tx);
+int zap_add_uint64_by_dnode(dnode_t *dn, const uint64_t *key,
+    int key_numints, int integer_size, uint64_t num_integers,
+    const void *val, dmu_tx_t *tx);
 
 /*
  * Set the attribute with the given name to the given value.  If an
@@ -255,6 +271,9 @@ int zap_add_uint64(objset_t *ds, uint64_t zapobj, const uint64_t *key,
 int zap_update(objset_t *ds, uint64_t zapobj, const char *name,
     int integer_size, uint64_t num_integers, const void *val, dmu_tx_t *tx);
 int zap_update_uint64(objset_t *os, uint64_t zapobj, const uint64_t *key,
+    int key_numints,
+    int integer_size, uint64_t num_integers, const void *val, dmu_tx_t *tx);
+int zap_update_uint64_by_dnode(dnode_t *dn, const uint64_t *key,
     int key_numints,
     int integer_size, uint64_t num_integers, const void *val, dmu_tx_t *tx);
 
@@ -282,6 +301,8 @@ int zap_remove_norm(objset_t *ds, uint64_t zapobj, const char *name,
 int zap_remove_by_dnode(dnode_t *dn, const char *name, dmu_tx_t *tx);
 int zap_remove_uint64(objset_t *os, uint64_t zapobj, const uint64_t *key,
     int key_numints, dmu_tx_t *tx);
+int zap_remove_uint64_by_dnode(dnode_t *dn, const uint64_t *key,
+    int key_numints, dmu_tx_t *tx);
 
 /*
  * Returns (in *count) the number of attributes in the specified zap
@@ -296,7 +317,7 @@ int zap_count(objset_t *ds, uint64_t zapobj, uint64_t *count);
  * match must be exact (ie, same as mask=-1ULL).
  */
 int zap_value_search(objset_t *os, uint64_t zapobj,
-    uint64_t value, uint64_t mask, char *name);
+    uint64_t value, uint64_t mask, char *name, uint64_t namelen);
 
 /*
  * Transfer all the entries from fromobj into intoobj.  Only works on
@@ -345,6 +366,7 @@ typedef struct zap_cursor {
 	uint64_t zc_serialized;
 	uint64_t zc_hash;
 	uint32_t zc_cd;
+	boolean_t zc_prefetch;
 } zap_cursor_t;
 
 typedef struct {
@@ -356,8 +378,20 @@ typedef struct {
 	boolean_t za_normalization_conflict;
 	uint64_t za_num_integers;
 	uint64_t za_first_integer;	/* no sign extension for <8byte ints */
-	char za_name[ZAP_MAXNAMELEN];
+	uint32_t za_name_len;
+	uint32_t za_pad;	/* We want za_name aligned to uint64_t. */
+	char za_name[];
 } zap_attribute_t;
+
+void zap_init(void);
+void zap_fini(void);
+
+/*
+ * Alloc and free zap_attribute_t.
+ */
+zap_attribute_t *zap_attribute_alloc(void);
+zap_attribute_t *zap_attribute_long_alloc(void);
+void zap_attribute_free(zap_attribute_t *attrp);
 
 /*
  * The interface for listing all the attributes of a zapobj can be
@@ -370,7 +404,9 @@ typedef struct {
  * Initialize a zap cursor, pointing to the "first" attribute of the
  * zapobj.  You must _fini the cursor when you are done with it.
  */
-void zap_cursor_init(zap_cursor_t *zc, objset_t *ds, uint64_t zapobj);
+void zap_cursor_init(zap_cursor_t *zc, objset_t *os, uint64_t zapobj);
+void zap_cursor_init_noprefetch(zap_cursor_t *zc, objset_t *os,
+    uint64_t zapobj);
 void zap_cursor_fini(zap_cursor_t *zc);
 
 /*

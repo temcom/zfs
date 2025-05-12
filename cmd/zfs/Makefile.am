@@ -1,21 +1,22 @@
-include $(top_srcdir)/config/Rules.am
-
-DEFAULT_INCLUDES += \
-	-I$(top_srcdir)/include \
-	-I$(top_srcdir)/lib/libspl/include
-
-sbin_PROGRAMS = zfs
+sbin_PROGRAMS   += zfs
+CPPCHECKTARGETS += zfs
 
 zfs_SOURCES = \
-	zfs_iter.c \
-	zfs_iter.h \
-	zfs_main.c \
-	zfs_util.h \
-	zfs_project.c \
-	zfs_projectutil.h
+	%D%/zfs_iter.c \
+	%D%/zfs_iter.h \
+	%D%/zfs_main.c \
+	%D%/zfs_project.c \
+	%D%/zfs_projectutil.h \
+	%D%/zfs_util.h
 
 zfs_LDADD = \
-	$(top_builddir)/lib/libnvpair/libnvpair.la \
-	$(top_builddir)/lib/libuutil/libuutil.la \
-	$(top_builddir)/lib/libzfs/libzfs.la \
-	$(top_builddir)/lib/libzfs_core/libzfs_core.la
+	libzfs.la \
+	libzfs_core.la \
+	libnvpair.la \
+	libuutil.la
+
+zfs_LDADD += $(LTLIBINTL)
+
+if BUILD_FREEBSD
+zfs_LDADD += -lgeom -ljail
+endif

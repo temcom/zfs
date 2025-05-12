@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: CDDL-1.0
 /*
  * CDDL HEADER START
  *
@@ -6,7 +7,7 @@
  * You may not use this file except in compliance with the License.
  *
  * You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
- * or http://www.opensolaris.org/os/licensing.
+ * or https://opensource.org/licenses/CDDL-1.0.
  * See the License for the specific language governing permissions
  * and limitations under the License.
  *
@@ -24,7 +25,7 @@
  */
 /*
  * Copyright (c) 2012, Joyent, Inc. All rights reserved.
- * Copyright (c) 2013, 2015 by Delphix. All rights reserved.
+ * Copyright (c) 2013, 2018 by Delphix. All rights reserved.
  */
 
 #ifndef _SYS_DMU_IMPL_H
@@ -35,6 +36,10 @@
 #include <sys/dnode.h>
 #include <sys/zfs_context.h>
 #include <sys/zfs_ioctl.h>
+#include <sys/uio.h>
+#include <sys/abd.h>
+#include <sys/arc.h>
+#include <sys/dbuf.h>
 
 #ifdef	__cplusplus
 extern "C" {
@@ -134,7 +139,7 @@ extern "C" {
  * 	db_data_pending
  * 	db_dirtied
  * 	db_link
- * 	db_dirty_node (??)
+ * 	db_dirty_records
  * 	db_dirtycnt
  * 	db_d.*
  * 	db.*
@@ -150,8 +155,10 @@ extern "C" {
  *   	dbuf_find: none (db_holds)
  *   	dbuf_hash_insert: none (db_holds)
  *   	dmu_buf_read_array_impl: none (db_state, db_changed)
- *   	dmu_sync: none (db_dirty_node, db_d)
+ *   	dmu_sync: none (db_dirty_records, db_d)
  *   	dnode_reallocate: none (db)
+ *   	dmu_write_direct: none (db_dirty_records, db_d)
+ *   	dmu_write_direct_done: none (db_dirty_records, db_d)
  *
  * dn_mtx (leaf)
  *   protects:
@@ -164,6 +171,7 @@ extern "C" {
  * 	dn_dirty_txg
  * 	dd_assigned_tx
  * 	dn_notxholds
+ *	dn_nodnholds
  * 	dn_dirtyctx
  * 	dn_dirtyctx_firstset
  * 	(dn_phys copy fields?)
@@ -233,53 +241,41 @@ extern "C" {
  *	dnode_new_blkid
  */
 
-struct objset;
 struct dmu_pool;
+struct dmu_buf;
+struct zgd;
 
-typedef struct dmu_xuio {
-	int next;
-	int cnt;
-	struct arc_buf **bufs;
-	iovec_t *iovp;
-} dmu_xuio_t;
+typedef struct dmu_sendstatus {
+	list_node_t dss_link;
+	int dss_outfd;
+	proc_t *dss_proc;
+	offset_t *dss_off;
+	uint64_t dss_blocks; /* blocks visited during the sending process */
+} dmu_sendstatus_t;
 
 /*
- * The list of data whose inclusion in a send stream can be pending from
- * one call to backup_cb to another.  Multiple calls to dump_free() and
- * dump_freeobjects() can be aggregated into a single DRR_FREE or
- * DRR_FREEOBJECTS replay record.
+ * dmu_sync_{ready/done} args
  */
-typedef enum {
-	PENDING_NONE,
-	PENDING_FREE,
-	PENDING_FREEOBJECTS
-} dmu_pendop_t;
+typedef struct {
+	dbuf_dirty_record_t	*dsa_dr;
+	void (*dsa_done)(struct zgd *, int);
+	struct zgd		*dsa_zgd;
+	dmu_tx_t		*dsa_tx;
+} dmu_sync_arg_t;
 
-typedef struct dmu_sendarg {
-	list_node_t dsa_link;
-	dmu_replay_record_t *dsa_drr;
-	vnode_t *dsa_vp;
-	int dsa_outfd;
-	proc_t *dsa_proc;
-	offset_t *dsa_off;
-	objset_t *dsa_os;
-	zio_cksum_t dsa_zc;
-	uint64_t dsa_toguid;
-	int dsa_err;
-	dmu_pendop_t dsa_pending_op;
-	uint64_t dsa_featureflags;
-	uint64_t dsa_last_data_object;
-	uint64_t dsa_last_data_offset;
-	uint64_t dsa_resume_object;
-	uint64_t dsa_resume_offset;
-	boolean_t dsa_sent_begin;
-	boolean_t dsa_sent_end;
-} dmu_sendarg_t;
+void dmu_sync_done(zio_t *, arc_buf_t *buf, void *varg);
+void dmu_sync_ready(zio_t *, arc_buf_t *buf, void *varg);
 
 void dmu_object_zapify(objset_t *, uint64_t, dmu_object_type_t, dmu_tx_t *);
 void dmu_object_free_zapified(objset_t *, uint64_t, dmu_tx_t *);
-int dmu_buf_hold_noread(objset_t *, uint64_t, uint64_t,
-    void *, dmu_buf_t **);
+
+int dmu_write_direct(zio_t *, dmu_buf_impl_t *, abd_t *, dmu_tx_t *);
+int dmu_read_abd(dnode_t *, uint64_t, uint64_t, abd_t *, uint32_t flags);
+int dmu_write_abd(dnode_t *, uint64_t, uint64_t, abd_t *, uint32_t, dmu_tx_t *);
+#if defined(_KERNEL)
+int dmu_read_uio_direct(dnode_t *, zfs_uio_t *, uint64_t);
+int dmu_write_uio_direct(dnode_t *, zfs_uio_t *, uint64_t, dmu_tx_t *);
+#endif
 
 #ifdef	__cplusplus
 }

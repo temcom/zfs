@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -7,7 +8,7 @@
 # You may not use this file except in compliance with the License.
 #
 # You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
+# or https://opensource.org/licenses/CDDL-1.0.
 # See the License for the specific language governing permissions
 # and limitations under the License.
 #
@@ -29,7 +30,7 @@
 # Copyright (c) 2016 by Delphix. All rights reserved.
 #
 
-. $STF_SUITE/include/libtest.shlib
+. $STF_SUITE/tests/functional/cli_root/zpool_export/zpool_export.kshlib
 
 #
 # DESCRIPTION:
@@ -45,19 +46,8 @@ verify_runnable "global"
 
 function cleanup
 {
-	typeset dir=$(get_device_dir $DISKS)
-	cd $olddir || \
-	    log_fail "Couldn't cd back to $olddir"
-
-	datasetexists "$TESTPOOL/$TESTFS" || \
-	    log_must zpool import -d $dir $TESTPOOL
-
-	ismounted "$TESTPOOL/$TESTFS"
-	(( $? != 0 )) && \
-	    log_must zfs mount $TESTPOOL/$TESTFS
-
-	[[ -e $TESTDIR/$TESTFILE0 ]] && \
-	    log_must rm -rf $TESTDIR/$TESTFILE0
+	log_must cd $olddir
+	zpool_export_cleanup
 }
 
 olddir=$PWD
@@ -66,16 +56,9 @@ log_onexit cleanup
 
 log_assert "Verify a busy ZPOOL cannot be exported."
 
-ismounted "$TESTPOOL/$TESTFS"
-(( $? != 0 )) && \
-    log_fail "$TESTDIR not mounted. Unable to continue."
-
-cd $TESTDIR || \
-    log_fail "Couldn't cd to $TESTDIR"
-
+log_must ismounted "$TESTPOOL/$TESTFS"
+log_must cd $TESTDIR
 log_mustnot zpool export $TESTPOOL
-
-poolexists $TESTPOOL || \
-	log_fail "$TESTPOOL not found in 'zpool list' output."
+log_must poolexists $TESTPOOL
 
 log_pass "Unable to export a busy ZPOOL as expected."

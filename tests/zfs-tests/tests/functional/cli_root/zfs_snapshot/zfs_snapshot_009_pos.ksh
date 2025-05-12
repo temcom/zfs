@@ -1,4 +1,5 @@
 #!/bin/ksh
+# SPDX-License-Identifier: CDDL-1.0
 #
 # This file and its contents are supplied under the terms of the
 # Common Development and Distribution License ("CDDL"), version 1.0.
@@ -12,6 +13,7 @@
 
 #
 # Copyright (c) 2012, 2016 by Delphix. All rights reserved.
+# Copyright (c) 2020 by Datto Inc. All rights reserved.
 #
 
 #
@@ -22,7 +24,9 @@
 # 1. Create multiple datasets
 # 2. Create multiple snapshots with a list of valid and invalid
 #    snapshot names
-# 3. Verify the valid snpashot creation
+# 3. Verify the valid snapshot creation
+# 4. Verify creation of snapshots report the correct numbers by
+#    performing a snapshot directory listing
 
 . $STF_SUITE/include/libtest.shlib
 
@@ -31,9 +35,10 @@ ZFS_MAX_DATASET_NAME_LEN=256
 function cleanup
 {
 	for ds in $datasets; do
-		datasetexists $ds && log_must zfs destroy -r $ds
+		datasetexists $ds && destroy_dataset $ds -r
 	done
-	zfs destroy -r $TESTPOOL/TESTFS4
+	destroy_dataset $TESTPOOL/TESTFS4 -r
+	destroy_dataset $TESTPOOL/TESTFS5 -r
 }
 datasets="$TESTPOOL/$TESTFS1 $TESTPOOL/$TESTFS2
     $TESTPOOL/$TESTFS3"
@@ -66,8 +71,7 @@ i=0
 while (( i < ${#valid_args[*]} )); do
 	log_must zfs snapshot ${valid_args[i]}
 	for token in ${valid_args[i]}; do
-		log_must snapexists $token && \
-		    log_must zfs destroy $token
+		snapexists $token && destroy_dataset $token
 	done
 	((i = i + 1))
 done
@@ -81,20 +85,17 @@ while (( i < ${#invalid_args[*]} )); do
 	((i = i + 1))
 done
 log_note "verify multiple snapshot transaction group"
-txg_group=$(zdb -Pd $TESTPOOL | grep snap | awk '{print $7}')
+txg_group=$(zdb -Pd $TESTPOOL | awk '/snap/ {print $7}')
 for i in 1 2 3; do
-	txg_tag=$(echo "$txg_group" | nawk -v j=$i 'FNR == j {print}')
+	txg_tag=$(echo "$txg_group" | awk -v j=$i 'FNR == j {print}')
 	[[ $txg_tag != $(echo "$txg_group" | \
-	    nawk -v j=$i 'FNR == j {print}') ]] \
-	    && log_fail "snapshots belong to differnt transaction groups"
+	    awk -v j=$i 'FNR == j {print}') ]] \
+	    && log_fail "snapshots belong to different transaction groups"
 done
 log_note "verify snapshot contents"
 for ds in $datasets; do
-	diff -q -r /$ds /$ds/.zfs/snapshot/snap > /dev/null 2>&1
-	if [[ $? -eq 1 ]]; then
-		log_fail "snapshot contents are different from" \
-		    "the filesystem"
-	fi
+	[ -d "/$ds/.zfs/snapshot/snap" ] && \
+		log_must directory_diff /$ds /$ds/.zfs/snapshot/snap
 done
 
 # We subtract 3 + 7 + 7 + 1 = 18 for three slashes (/), strlen("TESTFSA") == 7,
@@ -111,5 +112,18 @@ log_must zfs rename $TESTPOOL/$TESTFS3/TESTFSA$DATASET_XXX \
     $TESTPOOL/$TESTFS3/TESTFSA
 log_must zfs snapshot -r $TESTPOOL/$TESTFS1@snap1 $TESTPOOL/$TESTFS2@snap1 \
         $TESTPOOL/$TESTFS3@snap1 $TESTPOOL/TESTFS4@snap1
+
+MYTEST="TESTFS5"
+ITERATIONS=10
+NUM_SNAPS=5
+for x in {1..$ITERATIONS}; do
+	log_must zfs create $TESTPOOL/$MYTEST
+	for y in {1..$NUM_SNAPS}; do
+		log_must zfs snapshot $TESTPOOL/$MYTEST@$y
+	done;
+	n=$(ls /$TESTPOOL/$MYTEST/.zfs/snapshot | wc -l)
+	verify_eq $n $NUM_SNAPS "count"
+	zfs destroy -r $TESTPOOL/$MYTEST;
+done;
 
 log_pass "zfs multiple snapshot verified correctly"

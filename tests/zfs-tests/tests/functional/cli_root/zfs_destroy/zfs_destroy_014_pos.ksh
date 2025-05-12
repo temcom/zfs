@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -24,7 +25,7 @@
 #
 # DESCRIPTION:
 #	'zfs destroy -R <snapshot>' can destroy all the child
-#	 snapshots and preserves all the nested datasetss.
+#	 snapshots and preserves all the nested datasets.
 #
 # STRATEGY:
 #	1. Create nested datasets in the storage pool.
@@ -45,7 +46,7 @@ datasets="$TESTPOOL/$TESTFS1 $TESTPOOL/$TESTFS1/$TESTFS2
 function cleanup
 {
 	for ds in $datasets; do
-		datasetexists $ds && zfs destroy -rf $ds
+		datasetexists $ds && destroy_dataset $ds -rf
 	done
 }
 
@@ -57,7 +58,7 @@ for ds in $datasets; do
 	datasetexists $ds || log_fail "Create $ds dataset fail."
 done
 
-# create recursive nestedd snapshot
+# create recursive nested snapshot
 log_must zfs snapshot -r $TESTPOOL/$TESTFS1@snap
 for ds in $datasets; do
 	datasetexists $ds@snap || log_fail "Create $ds@snap snapshot fail."

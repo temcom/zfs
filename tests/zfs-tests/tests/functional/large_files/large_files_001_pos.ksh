@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -7,7 +8,7 @@
 # You may not use this file except in compliance with the License.
 #
 # You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
+# or https://opensource.org/licenses/CDDL-1.0.
 # See the License for the specific language governing permissions
 # and limitations under the License.
 #
@@ -38,7 +39,7 @@
 # STRATEGY:
 # 1. largest_file will write to a file and increase its size
 # to the maximum allowable.
-# 2. The last byte of the file should be accessbile without error.
+# 2. The last byte of the file should be accessible without error.
 # 3. Writing beyond the maximum file size generates an 'errno' of
 # EFBIG.
 #

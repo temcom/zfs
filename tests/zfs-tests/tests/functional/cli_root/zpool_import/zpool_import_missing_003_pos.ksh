@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -7,7 +8,7 @@
 # You may not use this file except in compliance with the License.
 #
 # You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
+# or https://opensource.org/licenses/CDDL-1.0.
 # See the License for the specific language governing permissions
 # and limitations under the License.
 #
@@ -59,12 +60,12 @@
 
 verify_runnable "global"
 
-# See issue: https://github.com/zfsonlinux/zfs/issues/6839
-if is_linux; then
+# See issue: https://github.com/openzfs/zfs/issues/6839
+if ! is_illumos; then
 	log_unsupported "Test case may be slow"
 fi
 
-set -A vdevs "" "mirror" "raidz"
+set -A vdevs "" "mirror" "raidz" "draid"
 
 function verify
 {
@@ -97,9 +98,8 @@ function verify
 	[[ ! -e $mtpt/$file ]] && \
 		log_fail "$mtpt/$file missing after import."
 
-	checksum2=$(sum $mymtpt/$file | awk '{print $1}')
-	[[ "$checksum1" != "$checksum2" ]] && \
-		log_fail "Checksums differ ($checksum1 != $checksum2)"
+	read -r checksum2 _ < <(cksum $mymtpt/$file)
+	log_must [ "$checksum1" = "$checksum2" ]
 
 	return 0
 
@@ -107,7 +107,7 @@ function verify
 
 function cleanup
 {
-	cd $DEVICE_DIR || log_fail "Unable change directory to $DEVICE_DIR"
+	log_must cd $DEVICE_DIR
 
 	for pool in $TESTPOOL1 $TESTPOOL2; do
 		if poolexists "$pool" ; then
@@ -136,7 +136,7 @@ function cleanup_all
 	done
 
 	log_must rm -f $DEVICE_DIR/$DEVICE_ARCHIVE
-	cd $CWD || log_fail "Unable change directory to $CWD"
+	log_must cd $CWD
 
 }
 
@@ -146,10 +146,10 @@ log_assert "Verify that import could handle device overlapped."
 
 CWD=$PWD
 
-cd $DEVICE_DIR || log_fail "Unable change directory to $DEVICE_DIR"
+log_must cd $DEVICE_DIR
 log_must tar cf $DEVICE_DIR/$DEVICE_ARCHIVE ${DEVICE_FILE}*
 
-checksum1=$(sum $MYTESTFILE | awk '{print $1}')
+read -r checksum1 < <(cksum $MYTESTFILE)
 
 typeset -i i=0
 typeset -i j=0
@@ -205,6 +205,9 @@ while (( i < ${#vdevs[*]} )); do
 					action=log_mustnot
 					;;
 				'raidz')  (( overlap > 1 )) && \
+					action=log_mustnot
+					;;
+				'draid')  (( overlap > 1 )) && \
 					action=log_mustnot
 					;;
 				'')  action=log_mustnot

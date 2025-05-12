@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -7,7 +8,7 @@
 # You may not use this file except in compliance with the License.
 #
 # You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
+# or https://opensource.org/licenses/CDDL-1.0.
 # See the License for the specific language governing permissions
 # and limitations under the License.
 #
@@ -47,13 +48,19 @@ verify_runnable "both"
 typeset val_opts=(p r H)
 typeset v_props=(type used available creation volsize referenced compressratio \
     mounted origin recordsize quota reservation mountpoint sharenfs checksum \
-    compression atime devices exec readonly setuid zoned snapdir acltype \
+    compression atime devices exec readonly setuid snapdir version \
     aclinherit canmount primarycache secondarycache \
-    usedbychildren usedbydataset usedbyrefreservation usedbysnapshots version)
-
+    usedbychildren usedbydataset usedbyrefreservation usedbysnapshots)
+if is_freebsd; then
+	typeset v_props_os=(jailed aclmode)
+else
+	typeset v_props_os=(zoned acltype)
+fi
 typeset  userquota_props=(userquota@root groupquota@root userused@root \
     groupused@root)
-typeset val_props=("${v_props[@]}" "${userquota_props[@]}")
+typeset val_props=("${v_props[@]}" \
+    "${v_props_os[@]}" \
+    "${userquota_props[@]}")
 set -f	# Force shell does not parse '?' and '*' as the wildcard
 typeset inval_opts=(P R h ? *)
 typeset inval_props=(Type 0 ? * -on --on readonl time USED RATIO MOUNTED)
@@ -87,12 +94,7 @@ function test_options
 	for dst in ${dataset[@]}; do
 		for opt in $opts; do
 			for prop in $props; do
-				zfs get $opt -- $prop $dst > /dev/null 2>&1
-				ret=$?
-				if [[ $ret == 0 ]]; then
-					log_fail "zfs get $opt -- $prop " \
-					    "$dst unexpectedly succeeded."
-				fi
+				log_mustnot eval "zfs get $opt -- $prop $dst > /dev/null 2>&1"
 			done
 		done
 	done
@@ -112,12 +114,7 @@ function test_options_bookmarks
 	for dst in ${bookmark[@]}; do
 		for opt in $opts; do
 			for prop in $props; do
-				zfs get $opt -- $prop $dst > /dev/null 2>&1
-				ret=$?
-				if [[ $ret == 0 ]]; then
-					log_fail "zfs get $opt -- $prop " \
-					    "$dst unexpectedly succeeded."
-				fi
+				log_mustnot eval "zfs get $opt -- $prop $dst > /dev/null 2>&1"
 			done
 		done
 	done

@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -7,7 +8,7 @@
 # You may not use this file except in compliance with the License.
 #
 # You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
+# or https://opensource.org/licenses/CDDL-1.0.
 # See the License for the specific language governing permissions
 # and limitations under the License.
 #
@@ -42,13 +43,32 @@
 # 3. Verify it run successfully.
 #
 
+function cleanup
+{
+	unset ZFS_ABORT
+
+	log_must pop_coredump_pattern "$coresavepath"
+	log_must rm -rf $corepath
+
+	# Don't leave the pool frozen.
+	log_must destroy_pool $TESTPOOL
+	log_must default_mirror_setup $DISKS
+}
+
 verify_runnable "both"
 
 log_assert "Debugging features of zpool should succeed."
+log_onexit cleanup
 
-log_must zpool -? > /dev/null 2>&1
+corepath=$TESTDIR/core
+corefile=$corepath/core.zpool
+coresavepath=$corepath/save
+log_must rm -rf $corepath
+log_must mkdir $corepath
 
-if is_global_zone ; then
+log_must eval "zpool -? >/dev/null 2>&1"
+
+if is_global_zone; then
 	log_must zpool freeze $TESTPOOL
 else
 	log_mustnot zpool freeze $TESTPOOL
@@ -57,21 +77,10 @@ fi
 
 log_mustnot zpool freeze fakepool
 
-# Remove corefile possibly left by previous failing run of this test.
-[[ -f core ]] && log_must rm -f core
+log_must eval "push_coredump_pattern \"$corepath\" > \"$coresavepath\""
+log_must export ZFS_ABORT=yes
 
-if is_linux; then
-	ulimit -c unlimited
-	echo "core" >/proc/sys/kernel/core_pattern
-	echo 0 >/proc/sys/kernel/core_uses_pid
-	export ASAN_OPTIONS="abort_on_error=1:disable_coredump=0"
-fi
-
-ZFS_ABORT=1; export ZFS_ABORT
-zpool > /dev/null 2>&1
-unset ZFS_ABORT
-
-[[ -f core ]] || log_fail "zpool did not dump core by request."
-[[ -f core ]] && log_must rm -f core
+log_mustnot eval "zpool >/dev/null 2>&1"
+log_must [ -f "$corefile" ]
 
 log_pass "Debugging features of zpool succeed."

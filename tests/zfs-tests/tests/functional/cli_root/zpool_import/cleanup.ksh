@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -7,7 +8,7 @@
 # You may not use this file except in compliance with the License.
 #
 # You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
+# or https://opensource.org/licenses/CDDL-1.0.
 # See the License for the specific language governing permissions
 # and limitations under the License.
 #
@@ -34,9 +35,10 @@
 
 verify_runnable "global"
 
+log_must set_tunable32 SCAN_SUSPEND_PROGRESS 0
+
 for pool in "$TESTPOOL" "$TESTPOOL1"; do
-	datasetexists $pool/$TESTFS && \
-		log_must zfs destroy -Rf $pool/$TESTFS
+	datasetexists $pool/$TESTFS && destroy_dataset $pool/$TESTFS -Rf
 	destroy_pool "$pool"
 done
 
@@ -44,21 +46,5 @@ for dir in "$TESTDIR" "$TESTDIR1" "$DEVICE_DIR" ; do
 	[[ -d $dir ]] && \
 		log_must rm -rf $dir
 done
-
-DISK=${DISKS%% *}
-if is_mpath_device $DISK; then
-	delete_partitions
-fi
-# recreate and destroy a zpool over the disks to restore the partitions to
-# normal
-case $DISK_COUNT in
-0|1)
-	log_note "No disk devices to restore"
-	;;
-*)
-	log_must cleanup_devices $ZFS_DISK1
-	log_must cleanup_devices $ZFS_DISK2
-	;;
-esac
 
 log_pass

@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -7,7 +8,7 @@
 # You may not use this file except in compliance with the License.
 #
 # You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
+# or https://opensource.org/licenses/CDDL-1.0.
 # See the License for the specific language governing permissions
 # and limitations under the License.
 #
@@ -106,14 +107,14 @@ do
 done
 
 log_note "Verify invalid pool names fail"
-set -A POOLNAME "c0t0d0s0" "c0t0d0" "c0t0d19" "c0t50000E0108D279d0" \
+set -A POOLNAME \
     "mirror" "raidz" ",," ",,,,,,,,,,,,,,,,,,,,,,,,," \
     "2222222222222222222" "mirror_pool" "raidz_pool" \
     "mirror-pool" "raidz-pool" "spare" "spare_pool" \
     "spare-pool" "raidz1-" "raidz2:" ":aaa" "-bbb" "_ccc" ".ddd"
-if verify_slog_support ; then
-	POOLNAME[${#POOLNAME[@]}]='log'
-fi
+
+POOLNAME[${#POOLNAME[@]}]='log'
+
 typeset -i i=0
 while ((i < ${#POOLNAME[@]})); do
 	log_mustnot zpool create -m $TESTDIR ${POOLNAME[$i]} $DISK

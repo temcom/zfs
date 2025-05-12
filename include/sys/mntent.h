@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: CDDL-1.0
 /*
  * CDDL HEADER START
  *
@@ -6,7 +7,7 @@
  * You may not use this file except in compliance with the License.
  *
  * You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
- * or http://www.opensolaris.org/os/licensing.
+ * or https://opensource.org/licenses/CDDL-1.0.
  * See the License for the specific language governing permissions
  * and limitations under the License.
  *
@@ -28,6 +29,8 @@
 
 #ifndef _SYS_MNTENT_H
 #define	_SYS_MNTENT_H
+
+#define	MNTMAXSTR	128
 
 #define	MNTTYPE_ZFS	"zfs"		/* ZFS file system */
 
@@ -71,8 +74,15 @@
 #define	MNTOPT_STRICTATIME "strictatime" /* strict access time updates */
 #define	MNTOPT_NOSTRICTATIME "nostrictatime" /* No strict access time updates */
 #define	MNTOPT_LAZYTIME "lazytime"	/* Defer access time writing */
+#ifdef __linux__
 #define	MNTOPT_SETUID	"suid"		/* Both setuid and devices allowed */
 #define	MNTOPT_NOSETUID	"nosuid"	/* Neither setuid nor devices allowed */
+#elif defined(__FreeBSD__)
+#define	MNTOPT_SETUID	"setuid"	/* Set uid allowed */
+#define	MNTOPT_NOSETUID	"nosetuid"	/* Set uid not allowed */
+#else
+#error "unknown OS"
+#endif
 #define	MNTOPT_OWNER	"owner"		/* allow owner mount */
 #define	MNTOPT_NOOWNER	"noowner"	/* do not allow owner mount */
 #define	MNTOPT_REMOUNT	"remount"	/* change mount options */
@@ -99,5 +109,8 @@
 #define	MNTOPT_NOACL	"noacl"		/* likewise */
 #define	MNTOPT_POSIXACL	"posixacl"	/* likewise */
 #define	MNTOPT_MNTPOINT	"mntpoint"	/* mount point hint */
+#define	MNTOPT_CASESENSITIVE	"casesensitive"		/* case sensitivity */
+#define	MNTOPT_CASEINSENSITIVE	"caseinsensitive"	/* case insensitivity */
+#define	MNTOPT_CASEMIXED	"casemixed"		/* case mixed */
 
 #endif	/* _SYS_MNTENT_H */

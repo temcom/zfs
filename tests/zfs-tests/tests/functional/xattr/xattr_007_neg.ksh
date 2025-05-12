@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -7,7 +8,7 @@
 # You may not use this file except in compliance with the License.
 #
 # You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
+# or https://opensource.org/licenses/CDDL-1.0.
 # See the License for the specific language governing permissions
 # and limitations under the License.
 #
@@ -52,7 +53,6 @@ function cleanup {
 	log_must rm $TEST_BASE_DIR/output.$$
 	[[ -e $TEST_BASE_DIR/expected_output.$$ ]]  && log_must rm  \
 	$TEST_BASE_DIR/expected_output.$$
-
 }
 
 log_assert "create/write xattr on a snapshot fails"
@@ -69,20 +69,20 @@ log_must touch $TESTDIR/myfile2.$$
 log_must zfs snapshot $TESTPOOL/$TESTFS@snap
 
 # we shouldn't be able to alter the first file's xattr
-if is_linux; then
-	log_mustnot eval "attr -s cp $TESTDIR/.zfs/snapshot/snap/myfile.$$ \
-	     </etc/passwd  > $TEST_BASE_DIR/output.$$  2>&1"
-	log_must grep  -i  Read-only  $TEST_BASE_DIR/output.$$
-	log_must eval "attr -q -l $TESTDIR/.zfs/snapshot/snap/myfile2.$$ \
-	    > $TEST_BASE_DIR/output.$$  2>&1"
-	log_must eval "attr -q -l $TESTDIR/myfile2.$$ > $TEST_BASE_DIR/expected_output.$$"
-else
+if is_illumos; then
 	log_mustnot eval " runat $TESTDIR/.zfs/snapshot/snap/myfile.$$ \
 	    cp /etc/passwd .  > $TEST_BASE_DIR/output.$$  2>&1"
 	log_must grep  -i  Read-only  $TEST_BASE_DIR/output.$$
 	log_must eval "runat $TESTDIR/.zfs/snapshot/snap/myfile2.$$  \
 	    ls > $TEST_BASE_DIR/output.$$  2>&1"
 	create_expected_output  $TEST_BASE_DIR/expected_output.$$ SUNWattr_ro SUNWattr_rw
+else
+	log_mustnot eval "set_xattr_stdin cp $TESTDIR/.zfs/snapshot/snap/myfile.$$ \
+	     </etc/passwd  > $TEST_BASE_DIR/output.$$  2>&1"
+	log_must grep  -i  Read-only  $TEST_BASE_DIR/output.$$
+	log_must eval "ls_xattr $TESTDIR/.zfs/snapshot/snap/myfile2.$$ \
+	    > $TEST_BASE_DIR/output.$$  2>&1"
+	log_must eval "ls_xattr $TESTDIR/myfile2.$$ > $TEST_BASE_DIR/expected_output.$$"
 fi
 
 log_must diff $TEST_BASE_DIR/output.$$ $TEST_BASE_DIR/expected_output.$$

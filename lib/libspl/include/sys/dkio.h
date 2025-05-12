@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: CDDL-1.0
 /*
  * CDDL HEADER START
  *
@@ -6,7 +7,7 @@
  * You may not use this file except in compliance with the License.
  *
  * You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
- * or http://www.opensolaris.org/os/licensing.
+ * or https://opensource.org/licenses/CDDL-1.0.
  * See the License for the specific language governing permissions
  * and limitations under the License.
  *
@@ -59,7 +60,6 @@ struct dk_cinfo {
 	uint_t	dki_vec;		/* interrupt vector */
 	char	dki_dname[DK_DEVLEN];	/* drive name (no unit #) */
 	uint_t	dki_unit;		/* unit number */
-	uint_t	dki_slave;		/* slave number */
 	ushort_t dki_partition;		/* partition number */
 	ushort_t dki_maxtransfer;	/* max. transfer size in DEV_BSIZE */
 };

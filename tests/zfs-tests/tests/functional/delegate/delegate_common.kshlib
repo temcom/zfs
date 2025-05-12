@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -6,7 +7,7 @@
 # You may not use this file except in compliance with the License.
 #
 # You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
+# or https://opensource.org/licenses/CDDL-1.0.
 # See the License for the specific language governing permissions
 # and limitations under the License.
 #
@@ -101,7 +102,7 @@ function verify_perm
 
 			log_note "Check $type $user $perm $dtst"
 			if ((ret != 0)) ; then
-				log_note "Fail: $user should have $perm " \
+				log_note "Fail: $user should have $perm" \
 					"on $dtst"
 				return 1
 			fi
@@ -161,38 +162,29 @@ function common_perm
 	typeset perm=$2
 	typeset dtst=$3
 
-	typeset -i ret=1
 	case $perm in
 		send)
 			verify_send $user $perm $dtst
-			ret=$?
 			;;
 		allow)
 			verify_allow $user $perm $dtst
-			ret=$?
 			;;
 		userprop)
 			verify_userprop $user $perm $dtst
-			ret=$?
 			;;
 		compression|checksum|readonly)
 			verify_ccr $user $perm $dtst
-			ret=$?
 			;;
 		copies)
 			verify_copies $user $perm $dtst
-			ret=$?
 			;;
 		reservation)
 			verify_reservation $user $perm $dtst
-			ret=$?
 			;;
 		*)
-			ret=1
+			return 1
 			;;
 	esac
-
-	return $ret
 }
 
 function check_fs_perm
@@ -201,99 +193,77 @@ function check_fs_perm
 	typeset perm=$2
 	typeset fs=$3
 
-	typeset -i ret=1
 	case $perm in
 		create)
 			verify_fs_create $user $perm $fs
-			ret=$?
 			;;
 		destroy)
 			verify_fs_destroy $user $perm $fs
-			ret=$?
 			;;
 		snapshot)
 			verify_fs_snapshot $user $perm $fs
-			ret=$?
 			;;
 		rollback)
 			verify_fs_rollback $user $perm $fs
-			ret=$?
 			;;
 		clone)
 			verify_fs_clone $user $perm $fs
-			ret=$?
 			;;
 		rename)
 			verify_fs_rename $user $perm $fs
-			ret=$?
 			;;
 		mount)
 			verify_fs_mount $user $perm $fs
-			ret=$?
 			;;
 		share)
 			verify_fs_share $user $perm $fs
-			ret=$?
 			;;
 		mountpoint)
 			verify_fs_mountpoint $user $perm $fs
-			ret=$?
 			;;
 		promote)
 			verify_fs_promote $user $perm $fs
-			ret=$?
 			;;
 		canmount)
 			verify_fs_canmount $user $perm $fs
-			ret=$?
 			;;
 		dnodesize)
 			verify_fs_dnodesize $user $perm $fs
-			ret=$?
 			;;
 		recordsize)
 			verify_fs_recordsize $user $perm $fs
-			ret=$?
 			;;
 		quota)
 			verify_fs_quota $user $perm $fs
-			ret=$?
 			;;
 		aclmode)
 			verify_fs_aclmode $user $perm $fs
-			ret=$?
 			;;
 		aclinherit)
 			verify_fs_aclinherit $user $perm $fs
-			ret=$?
 			;;
 		snapdir)
 			verify_fs_snapdir $user $perm $fs
-			ret=$?
 			;;
 		atime|exec|devices|setuid|xattr)
 			verify_fs_aedsx $user $perm $fs
-			ret=$?
 			;;
 		zoned)
 			verify_fs_zoned $user $perm $fs
-			ret=$?
 			;;
 		sharenfs)
 			verify_fs_sharenfs $user $perm $fs
-			ret=$?
 			;;
 		receive)
 			verify_fs_receive $user $perm $fs
-			ret=$?
+			;;
+		receive:append)
+			verify_fs_receive_append $user $perm $fs
 			;;
 		*)
 			common_perm $user $perm $fs
-			ret=$?
 			;;
 	esac
-
-	return $ret
 }
 
 function check_vol_perm
@@ -302,43 +272,32 @@ function check_vol_perm
 	typeset perm=$2
 	typeset vol=$3
 
-	typeset -i ret=1
 	case $perm in
 		destroy)
 			verify_vol_destroy $user $perm $vol
-			ret=$?
 			;;
 		snapshot)
 			verify_vol_snapshot $user $perm $vol
-			ret=$?
 			;;
 		rollback)
 			verify_vol_rollback $user $perm $vol
-			ret=$?
 			;;
 		clone)
 			verify_vol_clone $user $perm $vol
-			ret=$?
 			;;
 		rename)
 			verify_vol_rename $user $perm $vol
-			ret=$?
 			;;
 		promote)
 			verify_vol_promote $user $perm $vol
-			ret=$?
 			;;
 		volsize)
 			verify_vol_volsize $user $perm $vol
-			ret=$?
 			;;
 		*)
 			common_perm $user $perm $vol
-			ret=$?
 			;;
 	esac
-
-	return $ret
 }
 
 function setup_unallow_testenv
@@ -362,8 +321,6 @@ function setup_unallow_testenv
 			log_must verify_perm $SUBFS $LOCAL_DESC_SET $OTHER2
 		fi
 	done
-
-	return 0
 }
 
 #
@@ -379,7 +336,7 @@ function verify_send
 	typeset dtst=$3
 
 	typeset oldval
-	typeset stamp=${perm}.${user}.$(date +'%F-%T-%N')
+	typeset stamp=${perm}.${user}.$RANDOM
 	typeset snap=$dtst@snap.$stamp
 
 	typeset -i ret=1
@@ -391,12 +348,11 @@ function verify_send
 	user_run $user eval "zfs send $snap > $bak_user"
 	log_must eval "zfs send $snap > $bak_root"
 
-	if [[ $(checksum $bak_user) == $(checksum $bak_root) ]]; then
+	if [ "$(cksum < $bak_user)" = "$(cksum < $bak_root)" ]; then
 		ret=0
 	fi
 
-	rm -rf $bak_user > /dev/null
-	rm -rf $bak_root > /dev/null
+	rm -rf $bak_user $bak_root
 
 	return $ret
 }
@@ -408,7 +364,7 @@ function verify_fs_receive
 	typeset fs=$3
 
 	typeset dtst
-	typeset stamp=${perm}.${user}.$(date +'%F-%T-%N')
+	typeset stamp=${perm}.${user}.$RANDOM
 	typeset newfs=$fs/newfs.$stamp
 	typeset newvol=$fs/newvol.$stamp
 	typeset bak_user=$TEST_BASE_DIR/bak.$user.$stamp
@@ -462,14 +418,52 @@ function verify_fs_receive
 		log_must eval "zfs receive $dtst < $bak_root"
 		log_must eval "zfs send $dtstsnap > $bak_root"
 		log_must_busy zfs destroy -rf $dtst
-		if [[ $(checksum $bak_user) != $(checksum $bak_root) ]]; then
+		if [ "$(cksum < $bak_user)" != "$(cksum < $bak_root)" ]; then
 			return 1
 		fi
 
-		rm -rf $bak_user > /dev/null
-		rm -rf $bak_root > /dev/null
+		rm -rf $bak_user $bak_root
 
 	done
+
+	return 0
+}
+
+function verify_fs_receive_append
+{
+	typeset user=$1
+	typeset perm=$2
+	typeset fs=$3
+
+	typeset dtst
+	typeset stamp=${perm}.${user}.$RANDOM
+	typeset newfs=$fs/newfs.$stamp
+	typeset bak_user=$TEST_BASE_DIR/bak.$user.$stamp
+
+	log_must zfs create $newfs
+	typeset dtst="$newfs"
+
+	typeset dtstsnap=$dtst@snap.$stamp
+	log_must zfs snapshot $dtstsnap
+
+	log_must eval "zfs send $dtstsnap > $bak_user"
+	log_must_busy zfs destroy -rf $dtst
+
+	log_must zfs allow $user create,mount,canmount $fs
+	user_run $user eval "zfs receive -o canmount=off -F $dtst < $bak_user"
+	log_must zfs unallow $user create,mount,canmount $fs
+	if datasetexists $dtstsnap ; then
+		return 1
+	fi
+
+	log_must zfs allow $user create,mount,canmount $fs
+	user_run $user eval "zfs receive -o canmount=off $dtst < $bak_user"
+	log_must zfs unallow $user create,mount,canmount $fs
+	if ! datasetexists $dtstsnap ; then
+		return 1
+	fi
+
+	rm -rf $bak_user
 
 	return 0
 }
@@ -480,9 +474,10 @@ function verify_userprop
 	typeset perm=$2
 	typeset dtst=$3
 
-	typeset stamp=${perm}.${user}.$(date +'%F-%T-%N')
+	typeset stamp=${perm}.${user}.$RANDOM
 
 	user_run $user zfs set "$user:ts=$stamp" $dtst
+	sync_pool ${dtst%%/*}
 	if [[ $stamp != $(get_prop "$user:ts" $dtst) ]]; then
 		return 1
 	fi
@@ -564,7 +559,7 @@ function verify_fs_create
 	typeset perm=$2
 	typeset fs=$3
 
-	typeset stamp=${perm}.${user}.$(date +'%F-%T-%N')
+	typeset stamp=${perm}.${user}.$RANDOM
 	typeset newfs=$fs/nfs.$stamp
 	typeset newvol=$fs/nvol.$stamp
 
@@ -684,7 +679,7 @@ function verify_fs_destroy
 
 # Verify that given the correct delegation, a regular user can:
 #	Take a snapshot of an unmounted dataset
-#	Take a snapshot of an mounted dataset
+# 	Take a snapshot of a mounted dataset
 #	Create a snapshot by making a directory in the .zfs/snapshot directory
 function verify_fs_snapshot
 {
@@ -692,7 +687,7 @@ function verify_fs_snapshot
 	typeset perm=$2
 	typeset fs=$3
 
-	typeset stamp=${perm}.${user}.$(date +'%F-%T-%N')
+	typeset stamp=${perm}.${user}.$RANDOM
 	typeset snap=$fs@snap.$stamp
 	typeset mntpt=$(get_prop mountpoint $fs)
 
@@ -716,12 +711,15 @@ function verify_fs_snapshot
 	fi
 	log_must zfs destroy $snap
 
-	typeset snapdir=${mntpt}/.zfs/snapshot/snap.$stamp
-	user_run $user mkdir $snapdir
-	if ! datasetexists $snap ; then
-		return 1
+	# Creating snaps via mkdir is not supported on FreeBSD
+	if ! is_freebsd; then
+		typeset snapdir=${mntpt}/.zfs/snapshot/snap.$stamp
+		user_run $user mkdir $snapdir
+		if ! datasetexists $snap ; then
+			return 1
+		fi
+		log_must zfs destroy $snap
 	fi
-	log_must zfs destroy $snap
 
 	return 0
 }
@@ -733,7 +731,7 @@ function verify_fs_rollback
 	typeset fs=$3
 
 	typeset oldval
-	typeset stamp=${perm}.${user}.$(date +'%F-%T-%N')
+	typeset stamp=${perm}.${user}.$RANDOM
 	typeset snap=$fs@snap.$stamp
 	typeset mntpt=$(get_prop mountpoint $fs)
 
@@ -766,7 +764,7 @@ function verify_fs_clone
 	typeset perm=$2
 	typeset fs=$3
 
-	typeset stamp=${perm}.${user}.$(date +'%F-%T-%N')
+	typeset stamp=${perm}.${user}.$RANDOM
 	typeset basefs=${fs%/*}
 	typeset snap=$fs@snap.$stamp
 	typeset clone=$basefs/cfs.$stamp
@@ -811,7 +809,7 @@ function verify_fs_rename
 	typeset perm=$2
 	typeset fs=$3
 
-	typeset stamp=${perm}.${user}.$(date +'%F-%T-%N')
+	typeset stamp=${perm}.${user}.$RANDOM
 	typeset basefs=${fs%/*}
 	typeset snap=$fs@snap.$stamp
 	typeset renamefs=$basefs/nfs.$stamp
@@ -894,7 +892,7 @@ function verify_fs_mount
 	typeset perm=$2
 	typeset fs=$3
 
-	typeset stamp=${perm}.${user}.$(date +'%F-%T-%N')
+	typeset stamp=${perm}.${user}.$RANDOM
 	typeset mntpt=$(get_prop mountpoint $fs)
 	typeset newmntpt=$TEST_BASE_DIR/mnt.$stamp
 
@@ -906,7 +904,7 @@ function verify_fs_mount
 	fi
 
 	if ! ismounted $fs ; then
-		log_must zfs set mountpoint=$newmntpt $fs
+		log_must zfs set -u mountpoint=$newmntpt $fs
 		log_must rm -rf $newmntpt
 		log_must mkdir $newmntpt
 
@@ -923,7 +921,7 @@ function verify_fs_mount
 		fi
 		log_must zfs umount $fs
 		log_must rm -rf $newmntpt
-		log_must zfs set mountpoint=$mntpt $fs
+		log_must zfs set -u mountpoint=$mntpt $fs
 	fi
 
 	return 0
@@ -962,7 +960,7 @@ function verify_fs_mountpoint
 	typeset perm=$2
 	typeset fs=$3
 
-	typeset stamp=${perm}.${user}.$(date +'%F-%T-%N')
+	typeset stamp=${perm}.${user}.$RANDOM
 	typeset mntpt=$(get_prop mountpoint $fs)
 	typeset newmntpt=$TEST_BASE_DIR/mnt.$stamp
 
@@ -1001,7 +999,7 @@ function verify_fs_promote
 	typeset perm=$2
 	typeset fs=$3
 
-	typeset stamp=${perm}.${user}.$(date +'%F-%T-%N')
+	typeset stamp=${perm}.${user}.$RANDOM
 	typeset basefs=${fs%/*}
 	typeset snap=$fs@snap.$stamp
 	typeset clone=$basefs/cfs.$stamp
@@ -1057,7 +1055,7 @@ function verify_fs_canmount
 	typeset fs=$3
 
 	typeset oldval
-	typeset stamp=${perm}.${user}.$(date +'%F-%T-%N')
+	typeset stamp=${perm}.${user}.$RANDOM
 
 	if ! ismounted $fs ; then
 		set -A modes "on" "off"
@@ -1368,7 +1366,7 @@ function verify_vol_snapshot
 	typeset perm=$2
 	typeset vol=$3
 
-	typeset stamp=${perm}.${user}.$(date +'%F-%T-%N')
+	typeset stamp=${perm}.${user}.$RANDOM
 	typeset basevol=${vol%/*}
 	typeset snap=$vol@snap.$stamp
 
@@ -1393,7 +1391,7 @@ function verify_vol_rollback
 	typeset perm=$2
 	typeset vol=$3
 
-	typeset stamp=${perm}.${user}.$(date+'%F-%T-%N')
+	typeset stamp=${perm}.${user}.$RANDOM
 	typeset basevol=${vol%/*}
 	typeset snap=$vol@snap.$stamp
 
@@ -1428,7 +1426,7 @@ function verify_vol_clone
 	typeset perm=$2
 	typeset vol=$3
 
-	typeset stamp=${perm}.${user}.$(date+'%F-%T-%N')
+	typeset stamp=${perm}.${user}.$RANDOM
 	typeset basevol=${vol%/*}
 	typeset snap=$vol@snap.$stamp
 	typeset clone=$basevol/cvol.$stamp
@@ -1474,7 +1472,7 @@ function verify_vol_rename
 	typeset perm=$2
 	typeset vol=$3
 
-	typeset stamp=${perm}.${user}.$(date+'%F-%T-%N')
+	typeset stamp=${perm}.${user}.$RANDOM
 	typeset basevol=${vol%/*}
 	typeset snap=$vol@snap.$stamp
 	typeset clone=$basevol/cvol.$stamp
@@ -1521,7 +1519,7 @@ function verify_vol_promote
 	typeset perm=$2
 	typeset vol=$3
 
-	typeset stamp=${perm}.${user}.$(date+'%F-%T-%N')
+	typeset stamp=${perm}.${user}.$RANDOM
 	typeset basevol=${vol%/*}
 	typeset snap=$vol@snap.$stamp
 	typeset clone=$basevol/cvol.$stamp
@@ -1690,20 +1688,12 @@ function verify_allow
 
 	typeset -i ret
 
-	user_run $user zfs allow $user allow $dtst
-	ret=$?
-	if [[ $ret -eq 0 ]]; then
-		return 1
-	fi
+	user_run $user zfs allow $user allow $dtst && return 1
 
 	log_must zfs allow $user copies $dtst
 	user_run $user zfs allow $user copies $dtst
 	ret=$?
 	log_must zfs unallow $user copies $dtst
-	if [[ $ret -eq 1 ]]; then
-		return 1
-	fi
-
-	return 0
+	[ $ret -ne 1 ]
 
 }

@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -7,7 +8,7 @@
 # You may not use this file except in compliance with the License.
 #
 # You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
+# or https://opensource.org/licenses/CDDL-1.0.
 # See the License for the specific language governing permissions
 # and limitations under the License.
 #
@@ -46,7 +47,7 @@ function cleanup {
 
 }
 
-set -A args "on" "sa"
+set -A args "dir" "sa"
 
 log_assert "A read of a non-existent xattr fails"
 log_onexit cleanup
@@ -57,6 +58,6 @@ for arg in ${args[*]}; do
 	# create a file
 	log_must touch $TESTDIR/myfile.$$
 	log_mustnot eval "cat $TESTDIR/myfile.$$ not-here.txt > /dev/null 2>&1"
-
-	log_pass "A read of a non-existent xattr fails"
 done
+
+log_pass "A read of a non-existent xattr fails"

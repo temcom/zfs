@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -7,7 +8,7 @@
 # You may not use this file except in compliance with the License.
 #
 # You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
+# or https://opensource.org/licenses/CDDL-1.0.
 # See the License for the specific language governing permissions
 # and limitations under the License.
 #
@@ -38,7 +39,7 @@
 #	space outside of this refreservation.
 #
 # STRATEGY:
-#	1. Setting quota and refservation
+#	1. Setting quota and refreservation
 #	2. Verify snapshot can be created, when used =< quota - refreserv
 #	3. Verify failed to create snapshot, when used > quota - refreserv
 #

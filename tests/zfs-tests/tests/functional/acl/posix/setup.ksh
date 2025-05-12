@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -7,7 +8,7 @@
 # You may not use this file except in compliance with the License.
 #
 # You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
+# or https://opensource.org/licenses/CDDL-1.0.
 # See the License for the specific language governing permissions
 # and limitations under the License.
 #
@@ -46,7 +47,6 @@ default_setup_noexit $DISK
 log_must chmod 777 $TESTDIR
 
 # Use POSIX ACLs on filesystem
-log_must zfs set acltype=posixacl $TESTPOOL/$TESTFS
-log_must zfs set xattr=sa $TESTPOOL/$TESTFS
+log_must zfs set acltype=posix $TESTPOOL/$TESTFS
 
 log_pass

@@ -1,4 +1,5 @@
 #!/bin/ksh
+# SPDX-License-Identifier: CDDL-1.0
 
 #
 # This file and its contents are supplied under the terms of the
@@ -34,7 +35,7 @@ log_onexit cleanup
 
 function cleanup
 {
-	datasetexists $origin && log_must zfs destroy -R $origin
+	datasetexists $origin && destroy_dataset $origin -R
 	log_must zfs create -o mountpoint=$TESTDIR $origin
 }
 
@@ -50,7 +51,7 @@ log_must zfs clone $origin@a $origin/clone
 for rs in 512 1024 2048 4096 8192 16384 32768 65536 131072 ; do
 	log_must zfs set recsize=$rs $origin/clone
 	dd if=/$TESTDIR/file of=/$TESTDIR/clone/file bs=1024k count=$MEGS \
-	    conv=notrunc > $TEST_BASE_DIR/null 2>&1 || log_fail "dd failed."
+	    conv=notrunc >/dev/null 2>&1 || log_fail "dd failed."
 	log_must verify_nopwrite $origin $origin@a $origin/clone
 done
 

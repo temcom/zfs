@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -7,7 +8,7 @@
 # You may not use this file except in compliance with the License.
 #
 # You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
+# or https://opensource.org/licenses/CDDL-1.0.
 # See the License for the specific language governing permissions
 # and limitations under the License.
 #
@@ -33,29 +34,5 @@
 . $STF_SUITE/tests/functional/cli_root/zpool_add/zpool_add.kshlib
 
 verify_runnable "global"
-
-if ! $(is_physical_device $DISKS) ; then
-	log_unsupported "This directory cannot be run on raw files."
-fi
-
-disk1=${DISKS%% *}
-if is_mpath_device $disk1; then
-        delete_partitions
-fi
-
-if [[ -n $DISK ]]; then
-	#
-        # Use 'zpool create' to clean up the information in
-        # in the given disk to avoid slice overlapping.
-        #
-	cleanup_devices $DISK
-
-        partition_disk $SIZE $DISK 7
-else
-	for disk in `echo $DISKSARRAY`; do
-		cleanup_devices $disk
-		partition_disk $SIZE $disk 7
-	done
-fi
 
 log_pass

@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -7,7 +8,7 @@
 # You may not use this file except in compliance with the License.
 #
 # You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
+# or https://opensource.org/licenses/CDDL-1.0.
 # See the License for the specific language governing permissions
 # and limitations under the License.
 #
@@ -50,17 +51,32 @@ log_assert "ZFS can set any valid user defined property to the non-readonly " \
 	"dataset."
 log_onexit cleanup_user_prop $TESTPOOL
 
-typeset -i i=0
-while ((i < 10)); do
+typeset -a names=()
+typeset -a values=()
+
+# Longest property name (255 bytes)
+names+=("$(awk 'BEGIN { printf "x:"; while (c++ < 253) printf "a" }')")
+values+=("too-long-property-name")
+# Longest property value (8191 bytes)
+names+=("too:long:property:value")
+values+=("$(awk 'BEGIN { while (c++ < 8191) printf "A" }')")
+# Valid property names
+for i in {1..10}; do
 	typeset -i len
 	((len = RANDOM % 32))
-	typeset user_prop=$(valid_user_property $len)
+	names+=("$(valid_user_property $len)")
 	((len = RANDOM % 512))
-	typeset value=$(user_property_value $len)
+	values+=("$(user_property_value $len)")
+done
+
+typeset -i i=0
+while ((i < ${#names[@]})); do
+	typeset name="${names[$i]}"
+	typeset value="${values[$i]}"
 
 	for dtst in $TESTPOOL $TESTPOOL/$TESTFS $TESTPOOL/$TESTVOL; do
-		log_must eval "zfs set $user_prop='$value' $dtst"
-		log_must eval "check_user_prop $dtst $user_prop '$value'"
+		log_must eval "zfs set $name='$value' $dtst"
+		log_must eval "check_user_prop $dtst $name '$value'"
 	done
 
 	((i += 1))

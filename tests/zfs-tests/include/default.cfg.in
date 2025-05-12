@@ -1,3 +1,6 @@
+#!/bin/sh
+# SPDX-License-Identifier: CDDL-1.0
+
 #
 # CDDL HEADER START
 #
@@ -6,7 +9,7 @@
 # You may not use this file except in compliance with the License.
 #
 # You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
+# or https://opensource.org/licenses/CDDL-1.0.
 # See the License for the specific language governing permissions
 # and limitations under the License.
 #
@@ -30,12 +33,12 @@
 #
 
 . $STF_SUITE/include/commands.cfg
-. $STF_SUITE/include/libtest.shlib
 
 # ZFS Directories
 export ZEDLET_ETC_DIR=${ZEDLET_ETC_DIR:-@sysconfdir@/zfs/zed.d}
 export ZEDLET_LIBEXEC_DIR=${ZEDLET_LIBEXEC_DIR:-@zfsexecdir@/zed.d}
 export ZPOOL_SCRIPT_DIR=${ZPOOL_SCRIPT_DIR:-@sysconfdir@/zfs/zpool.d}
+export ZPOOL_COMPAT_DIR=${ZPOOL_COMPAT_DIR:-@datadir@/zfs/compatibility.d}
 
 # Define run length constants
 export RT_LONG="3"
@@ -78,7 +81,7 @@ export TESTPOOL=testpool
 export TESTPOOL1=testpool1
 export TESTPOOL2=testpool2
 export TESTPOOL3=testpool3
-export PERFPOOL=perfpool
+export PERFPOOL=${PERFPOOL:-perfpool}
 
 # some test file system names
 export TESTFS=testfs
@@ -143,17 +146,6 @@ export SPA_MINDEVSIZE=$((64 * 1024 * 1024))
 # For iscsi target support
 export ISCSITGTFILE=/tmp/iscsitgt_file
 export ISCSITGT_FMRI=svc:/system/iscsitgt:default
-if ! is_linux; then
-export AUTO_SNAP=$(svcs -a | grep auto-snapshot | grep online | awk \
-    '{print $3}')
-fi
-
-#
-# finally, if we're running in a local zone
-# we take some additional actions
-if ! is_global_zone; then
-	reexport_pool
-fi
 
 export ZFS_VERSION=5
 export ZFS_ALL_VERSIONS="1 2 3 4 5"
@@ -164,7 +156,23 @@ done
 
 export MAX_PARTITIONS=8
 
-if is_linux; then
+if [ "@ASAN_ENABLED@" = "yes" ]; then
+	export ASAN_OPTIONS=abort_on_error=true:halt_on_error=true:allocator_may_return_null=true:disable_coredump=false:detect_stack_use_after_return=true:detect_odr_violation=1
+
+	# TODO
+	# disable memory leaks detection
+	# there are quite many of them and they are not as
+	# destructive to CLI programs as they are to daemons
+	export ASAN_OPTIONS="$ASAN_OPTIONS:detect_leaks=false"
+fi
+
+if [ "@UBSAN_ENABLED@" = "yes" ]; then
+	export UBSAN_OPTIONS=abort_on_error=true:halt_on_error=true:print_stacktrace=true
+fi
+
+
+case $(uname) in
+Linux)
 	unpack_opts="--sparse -xf"
 	pack_opts="--sparse -cf"
 	verbose=" -v"
@@ -173,18 +181,44 @@ if is_linux; then
 
 	ZVOL_DEVDIR="/dev/zvol"
 	ZVOL_RDEVDIR="/dev/zvol"
+	DEV_DSKDIR="/dev"
 	DEV_RDSKDIR="/dev"
 	DEV_MPATHDIR="/dev/mapper"
 
-	ZEDLET_DIR="/var/tmp/zed"
+	ZEDLET_DIR="$TEST_BASE_DIR/zed"
 	ZED_LOG="$ZEDLET_DIR/zed.log"
 	ZED_DEBUG_LOG="$ZEDLET_DIR/zed.debug.log"
 	VDEVID_CONF="$ZEDLET_DIR/vdev_id.conf"
 	VDEVID_CONF_ETC="/etc/zfs/vdev_id.conf"
 
-
 	NEWFS_DEFAULT_FS="ext2"
-else
+	SLICE_PREFIX=""
+	;;
+FreeBSD)
+	unpack_opts="xv"
+	pack_opts="cf"
+	verbose="v"
+	unpack_preserve="xpf"
+	pack_preserve="cpf"
+
+	ZVOL_DEVDIR="/dev/zvol"
+	ZVOL_RDEVDIR="/dev/zvol"
+	DEV_DSKDIR="/dev"
+	DEV_RDSKDIR="/dev"
+	DEV_MPATHDIR="/dev/multipath"
+
+	NEWFS_DEFAULT_FS="ufs"
+	SLICE_PREFIX="p"
+	;;
+*)
+	export AUTO_SNAP=$(svcs -a | \
+	    awk '/auto-snapshot/ && /online/ { print $3 }')
+	# finally, if we're running in a local zone
+	# we take some additional actions
+	if [ "$(zonename 2>/dev/null)" != "global" ]; then
+		reexport_pool
+	fi
+
 	unpack_opts="xv"
 	pack_opts="cf"
 	verbose="v"
@@ -197,7 +231,10 @@ else
 	DEV_RDSKDIR="/dev/rdsk"
 
 	NEWFS_DEFAULT_FS="ufs"
-fi
+	SLICE_PREFIX="s"
+	;;
+esac
 export unpack_opts pack_opts verbose unpack_preserve pack_preserve \
-       ZVOL_DEVDIR ZVOL_RDEVDIR NEWFS_DEFAULT_FS DEV_RDSKDIR DEV_MPATHDIR \
-       ZEDLET_DIR ZED_LOG ZED_DEBUG_LOG VDEVID_CONF VDEVID_CONF_ETC
+       ZVOL_DEVDIR ZVOL_RDEVDIR DEV_DSKDIR DEV_RDSKDIR DEV_MPATHDIR \
+       ZEDLET_DIR ZED_LOG ZED_DEBUG_LOG VDEVID_CONF VDEVID_CONF_ETC \
+       NEWFS_DEFAULT_FS SLICE_PREFIX

@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -7,7 +8,7 @@
 # You may not use this file except in compliance with the License.
 #
 # You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
+# or https://opensource.org/licenses/CDDL-1.0.
 # See the License for the specific language governing permissions
 # and limitations under the License.
 #
@@ -26,6 +27,7 @@
 #
 
 . $STF_SUITE/include/libtest.shlib
+. $STF_SUITE/include/properties.shlib
 . $STF_SUITE/tests/functional/cli_root/zfs_set/zfs_set_common.kshlib
 
 #
@@ -41,7 +43,7 @@
 verify_runnable "both"
 
 set -A dataset "$TESTPOOL" "$TESTPOOL/$TESTFS" "$TESTPOOL/$TESTVOL"
-set -A values $(get_compress_opts zfs_set)
+set -A values "${compress_prop_vals[@]}"
 
 log_assert "Setting a valid compression on file system and volume, " \
 	"It should be successful."

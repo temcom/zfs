@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # This file and its contents are supplied under the terms of the
 # Common Development and Distribution License ("CDDL"), version 1.0.
@@ -14,14 +15,14 @@
 # Copyright (c) 2016 by Delphix. All rights reserved.
 #
 
-verify_runnable "global"
-
 . $STF_SUITE/tests/functional/channel_program/channel_common.kshlib
 
 #
 # DESCRIPTION:
 #	run C program which tests passing different nvlists to lua
 #
+
+verify_runnable "global"
 
 log_assert "nvlist arguments can be passed to LUA."
 

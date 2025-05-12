@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: CDDL-1.0
 /*
  * CDDL HEADER START
  *
@@ -6,7 +7,7 @@
  * You may not use this file except in compliance with the License.
  *
  * You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
- * or http://www.opensolaris.org/os/licensing.
+ * or https://opensource.org/licenses/CDDL-1.0.
  * See the License for the specific language governing permissions
  * and limitations under the License.
  *
@@ -20,7 +21,7 @@
  */
 /*
  * Copyright (c) 2005, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright (c) 2012, 2017 by Delphix. All rights reserved.
+ * Copyright (c) 2012, 2018 by Delphix. All rights reserved.
  * Copyright (c) 2014, Joyent, Inc. All rights reserved.
  * Copyright (c) 2014 Spectra Logic Corporation, All rights reserved.
  */
@@ -29,18 +30,20 @@
 #define	_SYS_DSL_DIR_H
 
 #include <sys/dmu.h>
+#include <sys/dsl_deadlist.h>
 #include <sys/dsl_pool.h>
 #include <sys/dsl_synctask.h>
-#include <sys/refcount.h>
+#include <sys/zfs_refcount.h>
 #include <sys/zfs_context.h>
 #include <sys/dsl_crypt.h>
+#include <sys/bplist.h>
 
 #ifdef	__cplusplus
 extern "C" {
 #endif
 
 struct dsl_dataset;
-
+struct zthr;
 /*
  * DD_FIELD_* are strings that are used in the "extensified" dsl_dir zap object.
  * They should be of the format <reverse-dns>:<field>.
@@ -49,7 +52,8 @@ struct dsl_dataset;
 #define	DD_FIELD_FILESYSTEM_COUNT	"com.joyent:filesystem_count"
 #define	DD_FIELD_SNAPSHOT_COUNT		"com.joyent:snapshot_count"
 #define	DD_FIELD_CRYPTO_KEY_OBJ		"com.datto:crypto_key_obj"
-#define	DD_FIELD_LAST_REMAP_TXG		"com.delphix:last_remap_txg"
+#define	DD_FIELD_LIVELIST		"com.delphix:livelist"
+#define	DD_FIELD_SNAPSHOTS_CHANGED	"com.ixsystems:snapshots_changed"
 
 typedef enum dd_used {
 	DD_USED_HEAD,
@@ -113,7 +117,16 @@ struct dsl_dir {
 	/* gross estimate of space used by in-flight tx's */
 	uint64_t dd_tempreserved[TXG_SIZE];
 	/* amount of space we expect to write; == amount of dirty data */
-	int64_t dd_space_towrite[TXG_SIZE];
+	uint64_t dd_space_towrite[TXG_SIZE];
+
+	dsl_deadlist_t dd_livelist;
+	bplist_t dd_pending_frees;
+	bplist_t dd_pending_allocs;
+
+	kmutex_t dd_activity_lock;
+	kcondvar_t dd_activity_cv;
+	boolean_t dd_activity_cancelled;
+	uint64_t dd_activity_waiters;
 
 	/* protected by dd_lock; keep at end of struct for better locality */
 	char dd_myname[ZFS_MAX_DATASET_NAME_LEN];
@@ -125,12 +138,12 @@ dsl_dir_phys(dsl_dir_t *dd)
 	return (dd->dd_dbuf->db_data);
 }
 
-void dsl_dir_rele(dsl_dir_t *dd, void *tag);
-void dsl_dir_async_rele(dsl_dir_t *dd, void *tag);
-int dsl_dir_hold(dsl_pool_t *dp, const char *name, void *tag,
+void dsl_dir_rele(dsl_dir_t *dd, const void *tag);
+void dsl_dir_async_rele(dsl_dir_t *dd, const void *tag);
+int dsl_dir_hold(dsl_pool_t *dp, const char *name, const void *tag,
     dsl_dir_t **, const char **tail);
 int dsl_dir_hold_obj(dsl_pool_t *dp, uint64_t ddobj,
-    const char *tail, void *tag, dsl_dir_t **);
+    const char *tail, const void *tag, dsl_dir_t **);
 void dsl_dir_name(dsl_dir_t *dd, char *buf);
 int dsl_dir_namelen(dsl_dir_t *dd);
 uint64_t dsl_dir_create_sync(dsl_pool_t *dp, dsl_dir_t *pds,
@@ -154,7 +167,6 @@ void dsl_dir_stats(dsl_dir_t *dd, nvlist_t *nv);
 uint64_t dsl_dir_space_available(dsl_dir_t *dd,
     dsl_dir_t *ancestor, int64_t delta, int ondiskonly);
 void dsl_dir_dirty(dsl_dir_t *dd, dmu_tx_t *tx);
-int dsl_dir_get_remaptxg(dsl_dir_t *dd, uint64_t *count);
 void dsl_dir_sync(dsl_dir_t *dd, dmu_tx_t *tx);
 int dsl_dir_tempreserve_space(dsl_dir_t *dd, uint64_t mem,
     uint64_t asize, boolean_t netfree, void **tr_cookiep, dmu_tx_t *tx);
@@ -164,6 +176,9 @@ void dsl_dir_diduse_space(dsl_dir_t *dd, dd_used_t type,
     int64_t used, int64_t compressed, int64_t uncompressed, dmu_tx_t *tx);
 void dsl_dir_transfer_space(dsl_dir_t *dd, int64_t delta,
     dd_used_t oldtype, dd_used_t newtype, dmu_tx_t *tx);
+void dsl_dir_diduse_transfer_space(dsl_dir_t *dd, int64_t used,
+    int64_t compressed, int64_t uncompressed, int64_t tonew,
+    dd_used_t oldtype, dd_used_t newtype, dmu_tx_t *tx);
 int dsl_dir_set_quota(const char *ddname, zprop_source_t source,
     uint64_t quota);
 int dsl_dir_set_reservation(const char *ddname, zprop_source_t source,
@@ -172,19 +187,24 @@ int dsl_dir_activate_fs_ss_limit(const char *);
 int dsl_fs_ss_limit_check(dsl_dir_t *, uint64_t, zfs_prop_t, dsl_dir_t *,
     cred_t *);
 void dsl_fs_ss_count_adjust(dsl_dir_t *, int64_t, const char *, dmu_tx_t *);
-int dsl_dir_update_last_remap_txg(dsl_dir_t *, uint64_t);
 int dsl_dir_rename(const char *oldname, const char *newname);
 int dsl_dir_transfer_possible(dsl_dir_t *sdd, dsl_dir_t *tdd,
     uint64_t fs_cnt, uint64_t ss_cnt, uint64_t space, cred_t *);
 boolean_t dsl_dir_is_clone(dsl_dir_t *dd);
 void dsl_dir_new_refreservation(dsl_dir_t *dd, struct dsl_dataset *ds,
     uint64_t reservation, cred_t *cr, dmu_tx_t *tx);
-void dsl_dir_snap_cmtime_update(dsl_dir_t *dd);
+void dsl_dir_snap_cmtime_update(dsl_dir_t *dd, dmu_tx_t *tx);
 inode_timespec_t dsl_dir_snap_cmtime(dsl_dir_t *dd);
 void dsl_dir_set_reservation_sync_impl(dsl_dir_t *dd, uint64_t value,
     dmu_tx_t *tx);
 void dsl_dir_zapify(dsl_dir_t *dd, dmu_tx_t *tx);
 boolean_t dsl_dir_is_zapified(dsl_dir_t *dd);
+int dsl_dir_livelist_open(dsl_dir_t *dd, uint64_t obj);
+void dsl_dir_livelist_close(dsl_dir_t *dd);
+void dsl_dir_remove_livelist(dsl_dir_t *dd, dmu_tx_t *tx, boolean_t total);
+int dsl_dir_wait(dsl_dir_t *dd, dsl_dataset_t *ds, zfs_wait_activity_t activity,
+    boolean_t *waited);
+void dsl_dir_cancel_waiters(dsl_dir_t *dd);
 
 /* internal reserved dir name */
 #define	MOS_DIR_NAME "$MOS"
@@ -200,7 +220,7 @@ boolean_t dsl_dir_is_zapified(dsl_dir_t *dd);
 	dprintf("dd=%s " fmt, __ds_name, __VA_ARGS__); \
 	kmem_free(__ds_name, ZFS_MAX_DATASET_NAME_LEN); \
 	} \
-_NOTE(CONSTCOND) } while (0)
+} while (0)
 #else
 #define	dprintf_dd(dd, fmt, ...)
 #endif

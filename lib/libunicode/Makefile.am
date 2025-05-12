@@ -1,24 +1,6 @@
-include $(top_srcdir)/config/Rules.am
+libunicode_la_CFLAGS = $(AM_CFLAGS) $(KERNEL_CFLAGS) $(LIBRARY_CFLAGS)
 
-VPATH = $(top_srcdir)/module/unicode
-
-# Includes kernel code, generate warnings for large stack frames
-AM_CFLAGS += $(FRAME_LARGER_THAN)
-
-DEFAULT_INCLUDES += \
-	-I$(top_srcdir)/include \
-	-I$(top_srcdir)/lib/libspl/include
-
-noinst_LTLIBRARIES = libunicode.la
-
-USER_C =
-
-KERNEL_C = \
-	u8_textprep.c \
-	uconv.c
+noinst_LTLIBRARIES += libunicode.la
 
 nodist_libunicode_la_SOURCES = \
-	$(USER_C) \
-	$(KERNEL_C)
-
-EXTRA_DIST = $(USER_C)
+	module/unicode/u8_textprep.c

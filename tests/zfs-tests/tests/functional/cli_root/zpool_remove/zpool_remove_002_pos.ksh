@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -7,7 +8,7 @@
 # You may not use this file except in compliance with the License.
 #
 # You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
+# or https://opensource.org/licenses/CDDL-1.0.
 # See the License for the specific language governing permissions
 # and limitations under the License.
 #
@@ -50,10 +51,9 @@ function cleanup
 }
 
 log_onexit cleanup
-typeset disk=${DISK}
 
-typeset spare_devs1="${disk}${SLICE_PREFIX}${SLICE0}"
-typeset spare_devs2="${disk}${SLICE_PREFIX}${SLICE1}"
+typeset spare_devs1="${DISK0}"
+typeset spare_devs2="${DISK1}"
 
 log_assert "zpool remove can only remove inactive hotspare device from pool"
 

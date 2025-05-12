@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: CDDL-1.0
 /*
  * CDDL HEADER START
  *
@@ -6,7 +7,7 @@
  * You may not use this file except in compliance with the License.
  *
  * You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
- * or http://www.opensolaris.org/os/licensing.
+ * or https://opensource.org/licenses/CDDL-1.0.
  * See the License for the specific language governing permissions
  * and limitations under the License.
  *
@@ -41,9 +42,9 @@
  * spa_version() number.
  *
  * Each new on-disk format change will be given a uniquely identifying string
- * guid rather than a version number. This avoids the problem of different
+ * GUID rather than a version number. This avoids the problem of different
  * organizations creating new on-disk formats with the same version number. To
- * keep feature guids unique they should consist of the reverse dns name of the
+ * keep feature GUIDs unique they should consist of the reverse dns name of the
  * organization which implemented the feature and a short name for the feature,
  * separated by a colon (e.g. com.delphix:async_destroy).
  *
@@ -95,11 +96,11 @@
  * These objects are linked to by the following names in the pool directory
  * object:
  *
- * 1) features_for_read: feature guid -> reference count
+ * 1) features_for_read: feature GUID -> reference count
  *    Features needed to open the pool for reading.
- * 2) features_for_write: feature guid -> reference count
+ * 2) features_for_write: feature GUID -> reference count
  *    Features needed to open the pool for writing.
- * 3) feature_descriptions: feature guid -> descriptive string
+ * 3) feature_descriptions: feature GUID -> descriptive string
  *    A human readable string.
  *
  * All enabled features appear in either features_for_read or
@@ -183,7 +184,7 @@ spa_features_check(spa_t *spa, boolean_t for_write,
 	char *buf;
 
 	zc = kmem_alloc(sizeof (zap_cursor_t), KM_SLEEP);
-	za = kmem_alloc(sizeof (zap_attribute_t), KM_SLEEP);
+	za = zap_attribute_alloc();
 	buf = kmem_alloc(MAXPATHLEN, KM_SLEEP);
 
 	supported = B_TRUE;
@@ -203,7 +204,7 @@ spa_features_check(spa_t *spa, boolean_t for_write,
 			supported = B_FALSE;
 
 			if (NULL != unsup_feat) {
-				char *desc = "";
+				const char *desc = "";
 
 				if (zap_lookup(os, spa->spa_feat_desc_obj,
 				    za->za_name, 1, MAXPATHLEN, buf) == 0)
@@ -217,7 +218,7 @@ spa_features_check(spa_t *spa, boolean_t for_write,
 	zap_cursor_fini(zc);
 
 	kmem_free(buf, MAXPATHLEN);
-	kmem_free(za, sizeof (zap_attribute_t));
+	zap_attribute_free(za);
 	kmem_free(zc, sizeof (zap_cursor_t));
 
 	return (supported);
@@ -279,7 +280,7 @@ feature_get_refcount_from_disk(spa_t *spa, zfeature_info_t *feature,
 static int
 feature_get_enabled_txg(spa_t *spa, zfeature_info_t *feature, uint64_t *res)
 {
-	ASSERTV(uint64_t enabled_txg_obj = spa->spa_feat_enabled_txg_obj);
+	uint64_t enabled_txg_obj __maybe_unused = spa->spa_feat_enabled_txg_obj;
 
 	ASSERT(zfeature_depends_on(feature->fi_feature,
 	    SPA_FEATURE_ENABLED_TXG));
@@ -376,6 +377,26 @@ feature_enable_sync(spa_t *spa, zfeature_info_t *feature, dmu_tx_t *tx)
 		    spa->spa_feat_enabled_txg_obj, feature->fi_guid,
 		    sizeof (uint64_t), 1, &enabling_txg, tx));
 	}
+
+	/*
+	 * Errata #4 is mostly a problem with encrypted datasets, but it
+	 * is also a problem where the old encryption feature did not
+	 * depend on the bookmark_v2 feature. If the pool does not have
+	 * any encrypted datasets we can resolve this issue simply by
+	 * enabling this dependency.
+	 */
+	if (spa->spa_errata == ZPOOL_ERRATA_ZOL_8308_ENCRYPTION &&
+	    spa_feature_is_enabled(spa, SPA_FEATURE_ENCRYPTION) &&
+	    !spa_feature_is_active(spa, SPA_FEATURE_ENCRYPTION) &&
+	    feature->fi_feature == SPA_FEATURE_BOOKMARK_V2)
+		spa->spa_errata = 0;
+
+	/*
+	 * Convert the old on-disk error log to the new format when activating
+	 * the head_errlog feature.
+	 */
+	if (feature->fi_feature == SPA_FEATURE_HEAD_ERRLOG)
+		spa_upgrade_errlog(spa, tx);
 }
 
 static void
@@ -384,9 +405,9 @@ feature_do_action(spa_t *spa, spa_feature_t fid, feature_action_t action,
 {
 	uint64_t refcount = 0;
 	zfeature_info_t *feature = &spa_feature_table[fid];
-	ASSERTV(uint64_t zapobj =
+	uint64_t zapobj __maybe_unused =
 	    (feature->fi_flags & ZFEATURE_FLAG_READONLY_COMPAT) ?
-	    spa->spa_feat_for_write_obj : spa->spa_feat_for_read_obj);
+	    spa->spa_feat_for_write_obj : spa->spa_feat_for_read_obj;
 
 	ASSERT(VALID_FEATURE_FID(fid));
 	ASSERT(0 != zapobj);

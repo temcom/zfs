@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -7,7 +8,7 @@
 # You may not use this file except in compliance with the License.
 #
 # You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
+# or https://opensource.org/licenses/CDDL-1.0.
 # See the License for the specific language governing permissions
 # and limitations under the License.
 #
@@ -42,23 +43,19 @@
 #	2. Kick off a scrub
 #	2. Kick off a second scrub and verify it fails
 #
-# NOTES:
-#	Artificially limit the scrub speed by setting the zfs_scan_vdev_limit
-#	low in order to ensure that the scrub does not complete early.
-#
 
 verify_runnable "global"
 
 function cleanup
 {
-	log_must set_tunable64 zfs_scan_vdev_limit $ZFS_SCAN_VDEV_LIMIT_DEFAULT
+	log_must set_tunable32 SCAN_SUSPEND_PROGRESS 0
 }
 
 log_onexit cleanup
 
 log_assert "Scrub command fails when there is already a scrub in progress"
 
-log_must set_tunable64 zfs_scan_vdev_limit $ZFS_SCAN_VDEV_LIMIT_SLOW
+log_must set_tunable32 SCAN_SUSPEND_PROGRESS 1
 log_must zpool scrub $TESTPOOL
 log_must is_pool_scrubbing $TESTPOOL true
 log_mustnot zpool scrub $TESTPOOL

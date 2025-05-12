@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -7,7 +8,7 @@
 # You may not use this file except in compliance with the License.
 #
 # You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
+# or https://opensource.org/licenses/CDDL-1.0.
 # See the License for the specific language governing permissions
 # and limitations under the License.
 #
@@ -29,19 +30,19 @@
 
 #
 # DESCRIPTION:
-# Ensure stats presented in /proc/spl/kstat/zfs/dbufstats are correct
-# based on /proc/spl/kstat/zfs/dbufs.
+# Ensure stats presented in the dbufstats kstat are correct based on the
+# dbufs kstat.
 #
 # STRATEGY:
 # 1. Generate a file with random data in it
 # 2. Store output from dbufs kstat
 # 3. Store output from dbufstats kstat
 # 4. Compare stats presented in dbufstats with stat generated using
-#    dbufstat.py and the dbufs kstat output
+#    dbufstat and the dbufs kstat output
 #
 
-DBUFSTATS_FILE=$(mktemp $TEST_BASE_DIR/dbufstats.out.XXXXXX)
-DBUFS_FILE=$(mktemp $TEST_BASE_DIR/dbufs.out.XXXXXX)
+DBUFSTATS_FILE=$(mktemp -t dbufstats.out.XXXXXX)
+DBUFS_FILE=$(mktemp -t dbufs.out.XXXXXX)
 
 function cleanup
 {
@@ -55,10 +56,10 @@ function testdbufstat # stat_name dbufstat_filter
 
         [[ -n "$2" ]] && filter="-F $2"
 
-	from_dbufstat=$(grep -w "$name" "$DBUFSTATS_FILE" | awk '{ print $3 }')
-	from_dbufs=$(dbufstat.py -bxn -i "$DBUFS_FILE" "$filter" | wc -l)
+	from_dbufstat=$(grep "^$name " "$DBUFSTATS_FILE" | cut -f2 -d' ')
+	from_dbufs=$(dbufstat -bxn -i "$DBUFS_FILE" "$filter" | wc -l)
 
-	within_tolerance $from_dbufstat $from_dbufs 9 \
+	within_tolerance $from_dbufstat $from_dbufs 15 \
 	    || log_fail "Stat $name exceeded tolerance"
 }
 
@@ -69,10 +70,10 @@ log_assert "dbufstats produces correct statistics"
 log_onexit cleanup
 
 log_must file_write -o create -f "$TESTDIR/file" -b 1048576 -c 20 -d R
-log_must zpool sync
+sync_all_pools
 
-log_must eval "cat /proc/spl/kstat/zfs/dbufs > $DBUFS_FILE"
-log_must eval "cat /proc/spl/kstat/zfs/dbufstats > $DBUFSTATS_FILE"
+log_must eval "kstat dbufs > $DBUFS_FILE"
+log_must eval "kstat -g dbufstats > $DBUFSTATS_FILE"
 
 for level in {0..11}; do
 	testdbufstat "cache_level_$level" "dbc=1,level=$level"

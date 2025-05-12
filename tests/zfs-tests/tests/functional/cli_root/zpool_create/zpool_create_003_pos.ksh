@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -7,7 +8,7 @@
 # You may not use this file except in compliance with the License.
 #
 # You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
+# or https://opensource.org/licenses/CDDL-1.0.
 # See the License for the specific language governing permissions
 # and limitations under the License.
 #
@@ -47,7 +48,8 @@ verify_runnable "global"
 
 function cleanup
 {
-	[[ -e $tmpfile ]] && log_must rm -f $tmpfile
+	poolexists $TESTPOOL && destroy_pool $TESTPOOL
+	rm -f $tmpfile
 }
 
 tmpfile="$TEST_BASE_DIR/zpool_create_003.tmp$$"
@@ -57,18 +59,6 @@ log_assert "'zpool create -n <pool> <vspec> ...' can display the configuration" 
 
 log_onexit cleanup
 
-if [[ -n $DISK ]]; then
-        disk=$DISK
-else
-        disk=$DISK0
-fi
-
-DISK=${DISKS%% *}
-if is_mpath_device $DISK; then
-	partition_disk $SIZE $disk 1
-fi
-
-typeset vspec="${disk}${SLICE_PREFIX}${SLICE0}"
 typeset goodprops=('' '-o comment=text' '-O checksum=on' '-O ns:prop=value')
 typeset badprops=('-o ashift=9999' '-O doesnotexist=on' '-O volsize=10M')
 
@@ -78,10 +68,10 @@ do
 	#
 	# Make sure disk is clean before we use it
 	#
-	create_pool $TESTPOOL $vspec > $tmpfile
+	create_pool $TESTPOOL $DISK0 > $tmpfile
 	destroy_pool $TESTPOOL
 
-	log_must eval "zpool create -n $prop $TESTPOOL $vspec > $tmpfile"
+	log_must eval "zpool create -n $prop $TESTPOOL $DISK0 > $tmpfile"
 
 	poolexists $TESTPOOL && \
 		log_fail "'zpool create -n <pool> <vspec> ...' fail."
@@ -97,10 +87,10 @@ do
 	#
 	# Make sure disk is clean before we use it
 	#
-	create_pool $TESTPOOL $vspec > $tmpfile
+	create_pool $TESTPOOL $DISK0 > $tmpfile
 	destroy_pool $TESTPOOL
 
-	log_mustnot zpool create -n $prop $TESTPOOL $vspec
+	log_mustnot zpool create -n $prop $TESTPOOL $DISK0
 done
 
 log_pass "'zpool create -n <pool> <vspec>...' success."

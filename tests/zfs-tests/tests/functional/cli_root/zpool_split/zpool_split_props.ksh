@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # This file and its contents are supplied under the terms of the
 # Common Development and Distribution License ("CDDL"), version 1.0.
@@ -15,6 +16,7 @@
 #
 
 . $STF_SUITE/include/libtest.shlib
+. $STF_SUITE/tests/functional/cli_root/zpool_split/zpool_split.cfg
 . $STF_SUITE/tests/functional/mmp/mmp.kshlib
 
 #
@@ -34,7 +36,7 @@ function cleanup
 	destroy_pool $TESTPOOL
 	destroy_pool $TESTPOOL2
 	rm -f $DEVICE1 $DEVICE2
-	log_must mmp_clear_hostid
+	! is_freebsd && log_must mmp_clear_hostid
 }
 
 function setup_mirror
@@ -47,33 +49,34 @@ function setup_mirror
 log_assert "'zpool split' can set new property values on the new pool"
 log_onexit cleanup
 
-if [ -e $HOSTID_FILE ]; then
-	log_unsupported "System has existing $HOSTID_FILE file"
-fi
-
-typeset good_props=('comment=text' 'ashift=12' 'multihost=on'
-    'listsnapshots=on' 'autoexpand=on' 'autoreplace=on' 'dedupditto=1234'
-    'delegation=off' 'failmode=continue')
-typeset bad_props=("bootfs=$TESTPOOL2/bootfs" 'version=28' 'ashift=4'
-    'allocated=1234' 'capacity=5678' 'dedupditto=42' 'multihost=none'
-    'feature@async_destroy=disabled' 'feature@xxx_fake_xxx=enabled'
-    'propname=propval' 'readonly=on')
-
 DEVICE1="$TEST_BASE_DIR/device-1"
 DEVICE2="$TEST_BASE_DIR/device-2"
 
-# Needed to set multihost=on
-log_must mmp_set_hostid $HOSTID1
+typeset good_props=('comment=text' 'ashift=12' 'multihost=on'
+    'listsnapshots=on' 'autoexpand=on' 'autoreplace=on'
+    'delegation=off' 'failmode=continue')
+typeset bad_props=("bootfs=$TESTPOOL2/bootfs" 'version=28' 'ashift=4'
+    'allocated=1234' 'capacity=5678' 'multihost=none'
+    'feature@async_destroy=disabled' 'feature@xxx_fake_xxx=enabled'
+    'propname=propval' 'readonly=on')
+if ! is_freebsd; then
+	good_props+=('multihost=on')
+	bad_props+=('multihost=none')
+	if [ -e $HOSTID_FILE ]; then
+		log_unsupported "System has existing $HOSTID_FILE file"
+	fi
+	# Needed to set multihost=on
+	log_must mmp_set_hostid $HOSTID1
+fi
 
 # Verify we can set a combination of valid property values on the new pool
 for prop in "${good_props[@]}"
 do
-	propname="$(awk -F= '{print $1}' <<< $prop)"
-	propval="$(awk -F= '{print $2}' <<< $prop)"
+	IFS='=' read -r propname propval <<<"$prop"
 	setup_mirror
 	log_must zpool split -o $prop $TESTPOOL $TESTPOOL2
 	log_must zpool import -N -d $TEST_BASE_DIR $TESTPOOL2
-	log_must test "$(get_pool_prop $propname $TESTPOOL2)" == "$propval"
+	log_must test "$(get_pool_prop $propname $TESTPOOL2)" = "$propval"
 
 	destroy_pool $TESTPOOL
 	destroy_pool $TESTPOOL2

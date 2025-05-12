@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -7,7 +8,7 @@
 # You may not use this file except in compliance with the License.
 #
 # You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
+# or https://opensource.org/licenses/CDDL-1.0.
 # See the License for the specific language governing permissions
 # and limitations under the License.
 #
@@ -21,7 +22,7 @@
 #
 
 #
-# Copyright (c) 2018 by Delphix. All rights reserved.
+# Copyright (c) 2018, 2019 by Delphix. All rights reserved.
 #
 
 . $STF_SUITE/include/libtest.shlib
@@ -39,13 +40,15 @@ fi
 
 claim="Expected '/sys/module/zfs/<dir>/<attr>' attributes are present"
 
-feature_attr="/sys/module/zfs/features.pool/org.open-zfs:large_blocks/guid"
+kernel_feature_attr="/sys/module/zfs/features.kernel/org.zfsonlinux:vdev_trim/supported"
+pool_feature_attr="/sys/module/zfs/features.pool/org.open-zfs:large_blocks/guid"
 pool_prop__attr="/sys/module/zfs/properties.pool/comment/values"
 ds_prop__attr="/sys/module/zfs/properties.dataset/recordsize/values"
 
 log_assert $claim
 
-log_must cat $feature_attr
+log_must cat $kernel_feature_attr
+log_must cat $pool_feature_attr
 log_must cat $pool_prop__attr
 log_must cat $ds_prop__attr
 

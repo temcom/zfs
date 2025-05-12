@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: CDDL-1.0
 /*
  * CDDL HEADER START
  *
@@ -39,11 +40,12 @@ vdev_indirect_mapping_verify(vdev_indirect_mapping_t *vim)
 	EQUIV(vim->vim_phys->vimp_num_entries > 0,
 	    vim->vim_entries != NULL);
 	if (vim->vim_phys->vimp_num_entries > 0) {
-		ASSERTV(vdev_indirect_mapping_entry_phys_t *last_entry =
-		    &vim->vim_entries[vim->vim_phys->vimp_num_entries - 1]);
-		ASSERTV(uint64_t offset =
-		    DVA_MAPPING_GET_SRC_OFFSET(last_entry));
-		ASSERTV(uint64_t size = DVA_GET_ASIZE(&last_entry->vimep_dst));
+		vdev_indirect_mapping_entry_phys_t *last_entry __maybe_unused =
+		    &vim->vim_entries[vim->vim_phys->vimp_num_entries - 1];
+		uint64_t offset __maybe_unused =
+		    DVA_MAPPING_GET_SRC_OFFSET(last_entry);
+		uint64_t size __maybe_unused =
+		    DVA_GET_ASIZE(&last_entry->vimep_dst);
 
 		ASSERT3U(vim->vim_phys->vimp_max_offset, >=, offset + size);
 	}
@@ -53,6 +55,8 @@ vdev_indirect_mapping_verify(vdev_indirect_mapping_t *vim)
 
 	return (B_TRUE);
 }
+#else
+#define	vdev_indirect_mapping_verify(vim) ((void) sizeof (vim), B_TRUE)
 #endif
 
 uint64_t
@@ -479,7 +483,7 @@ vdev_indirect_mapping_add_entries(vdev_indirect_mapping_t *vim,
 	    entries_written * sizeof (vdev_indirect_mapping_entry_phys_t));
 	vim->vim_entries = vmem_alloc(new_size, KM_SLEEP);
 	if (old_size > 0) {
-		bcopy(old_entries, vim->vim_entries, old_size);
+		memcpy(vim->vim_entries, old_entries, old_size);
 		vmem_free(old_entries, old_size);
 	}
 	VERIFY0(dmu_read(vim->vim_objset, vim->vim_object, old_size,
@@ -560,6 +564,7 @@ vdev_indirect_mapping_load_obsolete_spacemap(vdev_indirect_mapping_t *vim,
 	losma.losma_counts = counts;
 	losma.losma_vim = vim;
 	VERIFY0(space_map_iterate(obsolete_space_sm,
+	    space_map_length(obsolete_space_sm),
 	    load_obsolete_sm_callback, &losma));
 }
 
@@ -580,7 +585,7 @@ vdev_indirect_mapping_load_obsolete_counts(vdev_indirect_mapping_t *vim)
 		    0, counts_size,
 		    counts, DMU_READ_PREFETCH));
 	} else {
-		bzero(counts, counts_size);
+		memset(counts, 0, counts_size);
 	}
 	return (counts);
 }

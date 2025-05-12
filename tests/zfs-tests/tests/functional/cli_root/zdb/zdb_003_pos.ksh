@@ -1,4 +1,5 @@
 #!/bin/ksh
+# SPDX-License-Identifier: CDDL-1.0
 
 #
 # This file and its contents are supplied under the terms of the
@@ -34,7 +35,16 @@ log_onexit cleanup
 function cleanup
 {
 	datasetexists $TESTPOOL && destroy_pool $TESTPOOL
+	if is_freebsd ; then
+		log_must sysctl kern.geom.debugflags=$saved_debugflags
+	fi
 }
+
+if is_freebsd ; then
+	# FreeBSD won't allow writing to an in-use device without this set
+	saved_debugflags=$(sysctl -n kern.geom.debugflags)
+	log_must sysctl kern.geom.debugflags=16
+fi
 
 verify_runnable "global"
 verify_disk_count "$DISKS" 2
@@ -51,8 +61,8 @@ log_note "$DEVS"
 log_must dd if=/dev/${DISK[0]} of=/dev/${DISK[1]} bs=1K count=256 conv=notrunc
 
 for x in 0 1 ; do
-	config_count=$(zdb -l $DEV_RDSKDIR/${DISK[$x]} | grep -c features_for_read)
-	(( $? != 0)) && log_fail "failed to get config_count from DISK[$x]"
+	config_count=$(zdb -l $DEV_RDSKDIR/${DISK[$x]} | grep -c features_for_read) ||
+		log_fail "failed to get config_count from DISK[$x]"
 	log_note "vdev $x: message_count $config_count"
 	[ $config_count -ne ${config_count[$x]} ] && \
 		log_fail "zdb produces an incorrect number of configuration dumps."

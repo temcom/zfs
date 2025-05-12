@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: CDDL-1.0
 /*
  * CDDL HEADER START
  *
@@ -7,7 +8,7 @@
  * with the License.
  *
  * You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
- * or http://www.opensolaris.org/os/licensing.
+ * or https://opensource.org/licenses/CDDL-1.0.
  * See the License for the specific language governing permissions
  * and limitations under the License.
  *
@@ -32,27 +33,21 @@
 #ifndef LIBSPL_RPC_XDR_H
 #define	LIBSPL_RPC_XDR_H
 
-/*
- * When available prefer libtirpc for xdr functionality.  This library is
- * mandatory when compiling with musl libc because it does not provide xdr.
- */
-#if defined(HAVE_LIBTIRPC)
+#include_next <rpc/xdr.h>
 
-#include <tirpc/rpc/xdr.h>
-#ifdef xdr_control
+#ifdef xdr_control /* if e.g. using tirpc */
 #undef xdr_control
 #endif
 
-#else
-#include_next <rpc/xdr.h>
-#endif /* HAVE_LIBTIRPC */
-
 #define	XDR_GET_BYTES_AVAIL 1
 
-typedef struct xdr_bytesrec {
+#ifndef HAVE_XDR_BYTESREC
+struct xdr_bytesrec {
 	bool_t xc_is_last_record;
 	size_t xc_num_avail;
-} xdr_bytesrec_t;
+};
+#endif
+typedef struct xdr_bytesrec  xdr_bytesrec_t;
 
 /*
  * This functionality is not required and is disabled in user space.

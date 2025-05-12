@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: CDDL-1.0
 /*
  * CDDL HEADER START
  *
@@ -6,7 +7,7 @@
  * You may not use this file except in compliance with the License.
  *
  * You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
- * or http://www.opensolaris.org/os/licensing.
+ * or https://opensource.org/licenses/CDDL-1.0.
  * See the License for the specific language governing permissions
  * and limitations under the License.
  *
@@ -26,6 +27,7 @@
 #include <sys/zfs_context.h>
 #include <sys/uberblock_impl.h>
 #include <sys/vdev_impl.h>
+#include <sys/mmp.h>
 
 int
 uberblock_verify(uberblock_t *ub)
@@ -58,9 +60,16 @@ uberblock_update(uberblock_t *ub, vdev_t *rvd, uint64_t txg, uint64_t mmp_delay)
 	ub->ub_timestamp = gethrestime_sec();
 	ub->ub_software_version = SPA_VERSION;
 	ub->ub_mmp_magic = MMP_MAGIC;
-	ub->ub_mmp_delay = spa_multihost(rvd->vdev_spa) ? mmp_delay : 0;
-	ub->ub_mmp_seq = 0;
+	if (spa_multihost(rvd->vdev_spa)) {
+		ub->ub_mmp_delay = mmp_delay;
+		ub->ub_mmp_config = MMP_SEQ_SET(0) |
+		    MMP_INTERVAL_SET(zfs_multihost_interval) |
+		    MMP_FAIL_INT_SET(zfs_multihost_fail_intervals);
+	} else {
+		ub->ub_mmp_delay = 0;
+		ub->ub_mmp_config = 0;
+	}
 	ub->ub_checkpoint_txg = 0;
 
-	return (ub->ub_rootbp.blk_birth == txg);
+	return (BP_GET_LOGICAL_BIRTH(&ub->ub_rootbp) == txg);
 }

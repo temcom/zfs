@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: CDDL-1.0
 /*
  * CDDL HEADER START
  *
@@ -7,7 +8,7 @@
  * with the License.
  *
  * You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
- * or http://www.opensolaris.org/os/licensing.
+ * or https://opensource.org/licenses/CDDL-1.0.
  * See the License for the specific language governing permissions
  * and limitations under the License.
  *
@@ -29,8 +30,12 @@
 
 #include_next <string.h>
 
+#ifndef HAVE_STRLCAT
 extern size_t strlcat(char *dst, const char *src, size_t dstsize);
+#endif
+
+#ifndef HAVE_STRLCPY
 extern size_t strlcpy(char *dst, const char *src, size_t len);
-extern size_t strnlen(const char *str, size_t maxlen);
+#endif
 
 #endif

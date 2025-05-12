@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: CDDL-1.0
 /*
  * CDDL HEADER START
  *
@@ -6,7 +7,7 @@
  * You may not use this file except in compliance with the License.
  *
  * You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
- * or http://www.opensolaris.org/os/licensing.
+ * or https://opensource.org/licenses/CDDL-1.0.
  * See the License for the specific language governing permissions
  * and limitations under the License.
  *
@@ -20,7 +21,7 @@
  */
 /*
  * Copyright (c) 2006, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright (c) 2012 by Delphix. All rights reserved.
+ * Copyright (c) 2012, 2020 by Delphix. All rights reserved.
  */
 
 #include <libzfs.h>
@@ -31,7 +32,7 @@
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <strings.h>
+#include <string.h>
 #include <sys/file.h>
 #include <sys/mntent.h>
 #include <sys/mnttab.h>
@@ -85,8 +86,6 @@ parse_pathname(const char *inpath, char *dataset, char *relpath,
     struct stat64 *statbuf)
 {
 	struct extmnttab mp;
-	FILE *fp;
-	int match;
 	const char *rel;
 	char fullpath[MAXPATHLEN];
 
@@ -99,35 +98,7 @@ parse_pathname(const char *inpath, char *dataset, char *relpath,
 		return (-1);
 	}
 
-	if (strlen(fullpath) >= MAXPATHLEN) {
-		(void) fprintf(stderr, "invalid object; pathname too long\n");
-		return (-1);
-	}
-
-	if (stat64(fullpath, statbuf) != 0) {
-		(void) fprintf(stderr, "cannot open '%s': %s\n",
-		    fullpath, strerror(errno));
-		return (-1);
-	}
-
-#ifdef HAVE_SETMNTENT
-	if ((fp = setmntent(MNTTAB, "r")) == NULL) {
-#else
-	if ((fp = fopen(MNTTAB, "r")) == NULL) {
-#endif
-		(void) fprintf(stderr, "cannot open %s\n", MNTTAB);
-		return (-1);
-	}
-
-	match = 0;
-	while (getextmntent(fp, &mp, sizeof (mp)) == 0) {
-		if (makedev(mp.mnt_major, mp.mnt_minor) == statbuf->st_dev) {
-			match = 1;
-			break;
-		}
-	}
-
-	if (!match) {
+	if (getextmntent(fullpath, &mp, statbuf) != 0) {
 		(void) fprintf(stderr, "cannot find mountpoint for '%s'\n",
 		    fullpath);
 		return (-1);
@@ -145,12 +116,12 @@ parse_pathname(const char *inpath, char *dataset, char *relpath,
 		return (-1);
 	}
 
-	(void) strcpy(dataset, mp.mnt_special);
+	(void) strlcpy(dataset, mp.mnt_special, MAXNAMELEN);
 
 	rel = fullpath + strlen(mp.mnt_mountp);
 	if (rel[0] == '/')
 		rel++;
-	(void) strcpy(relpath, rel);
+	(void) strlcpy(relpath, rel, MAXPATHLEN);
 
 	return (0);
 }
@@ -176,7 +147,7 @@ object_from_path(const char *dataset, uint64_t object, zinject_record_t *record)
 }
 
 /*
- * Intialize the range based on the type, level, and range given.
+ * Initialize the range based on the type, level, and range given.
  */
 static int
 initialize_range(err_type_t type, int level, char *range,
@@ -216,6 +187,7 @@ initialize_range(err_type_t type, int level, char *range,
 	switch (type) {
 	default:
 		break;
+
 	case TYPE_DATA:
 		break;
 
@@ -287,7 +259,7 @@ translate_record(err_type_t type, const char *object, const char *range,
 		}
 
 		dataset[0] = '\0';
-		(void) strcpy(poolname, object);
+		(void) strlcpy(poolname, object, MAXNAMELEN);
 		return (0);
 	}
 
@@ -310,7 +282,7 @@ translate_record(err_type_t type, const char *object, const char *range,
 	ziprintf("raw object: %llu\n", record->zi_object);
 
 	/*
-	 * For the given object, intialize the range in bytes
+	 * For the given object, initialize the range in bytes
 	 */
 	if (initialize_range(type, level, (char *)range, record) != 0)
 		goto err;
@@ -327,7 +299,7 @@ translate_record(err_type_t type, const char *object, const char *range,
 	/*
 	 * Copy the pool name
 	 */
-	(void) strcpy(poolname, dataset);
+	(void) strlcpy(poolname, dataset, MAXNAMELEN);
 	if ((slash = strchr(poolname, '/')) != NULL)
 		*slash = '\0';
 
@@ -418,7 +390,7 @@ translate_device(const char *pool, const char *device, err_type_t label_type,
 		record->zi_end = record->zi_start + VDEV_PAD_SIZE - 1;
 		break;
 	case TYPE_LABEL_PAD2:
-		record->zi_start = offsetof(vdev_label_t, vl_pad2);
+		record->zi_start = offsetof(vdev_label_t, vl_be);
 		record->zi_end = record->zi_start + VDEV_PAD_SIZE - 1;
 		break;
 	}

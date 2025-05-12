@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: CDDL-1.0
 /*
  * CDDL HEADER START
  *
@@ -6,7 +7,7 @@
  * You may not use this file except in compliance with the License.
  *
  * You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
- * or http://www.opensolaris.org/os/licensing.
+ * or https://opensource.org/licenses/CDDL-1.0.
  * See the License for the specific language governing permissions
  * and limitations under the License.
  *
@@ -32,7 +33,7 @@
 #include <sys/inttypes.h>
 #include <sys/dmu.h>
 #include <sys/txg.h>
-#include <sys/refcount.h>
+#include <sys/zfs_refcount.h>
 
 #ifdef	__cplusplus
 extern "C" {
@@ -90,6 +91,8 @@ enum dmu_tx_hold_type {
 	THT_ZAP,
 	THT_SPACE,
 	THT_SPILL,
+	THT_CLONE,
+	THT_APPEND,
 	THT_NUMTYPES
 };
 
@@ -125,6 +128,7 @@ typedef struct dmu_tx_stats {
 	kstat_named_t dmu_tx_dirty_delay;
 	kstat_named_t dmu_tx_dirty_over_max;
 	kstat_named_t dmu_tx_dirty_frees_delay;
+	kstat_named_t dmu_tx_wrlog_delay;
 	kstat_named_t dmu_tx_quota;
 } dmu_tx_stats_t;
 

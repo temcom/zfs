@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: CDDL-1.0
 /*
  * CDDL HEADER START
  *
@@ -6,7 +7,7 @@
  * You may not use this file except in compliance with the License.
  *
  * You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
- * or http://www.opensolaris.org/os/licensing.
+ * or https://opensource.org/licenses/CDDL-1.0.
  * See the License for the specific language governing permissions
  * and limitations under the License.
  *
@@ -48,7 +49,6 @@
  *	ptmpl:	a storage for the opaque crypto_ctx_template_t, allocated and
  *		initialized by the software provider this routine is
  *		dispatched to.
- *	kmflag:	KM_SLEEP/KM_NOSLEEP mem. alloc. flag.
  *
  * Description:
  *	Redirects the call to the software provider of the specified
@@ -63,13 +63,13 @@
  *
  * Returns:
  *	CRYPTO_SUCCESS when the context template is successfully created.
- *	CRYPTO_HOST_MEMEORY: mem alloc failure
+ *	CRYPTO_HOST_MEMORY: mem alloc failure
  *	CRYPTO_ARGUMENTS_BAD: NULL storage for the ctx template.
  *	RYPTO_MECHANISM_INVALID: invalid mechanism 'mech'.
  */
 int
 crypto_create_ctx_template(crypto_mechanism_t *mech, crypto_key_t *key,
-    crypto_ctx_template_t *ptmpl, int kmflag)
+    crypto_ctx_template_t *ptmpl)
 {
 	int error;
 	kcf_mech_entry_t *me;
@@ -89,8 +89,8 @@ crypto_create_ctx_template(crypto_mechanism_t *mech, crypto_key_t *key,
 	if (error != CRYPTO_SUCCESS)
 		return (error);
 
-	if ((ctx_tmpl = (kcf_ctx_template_t *)kmem_alloc(
-	    sizeof (kcf_ctx_template_t), kmflag)) == NULL) {
+	if ((ctx_tmpl = kmem_alloc(
+	    sizeof (kcf_ctx_template_t), KM_SLEEP)) == NULL) {
 		KCF_PROV_REFRELE(pd);
 		return (CRYPTO_HOST_MEMORY);
 	}
@@ -101,10 +101,9 @@ crypto_create_ctx_template(crypto_mechanism_t *mech, crypto_key_t *key,
 	prov_mech.cm_param_len = mech->cm_param_len;
 
 	error = KCF_PROV_CREATE_CTX_TEMPLATE(pd, &prov_mech, key,
-	    &(ctx_tmpl->ct_prov_tmpl), &(ctx_tmpl->ct_size), KCF_RHNDL(kmflag));
+	    &(ctx_tmpl->ct_prov_tmpl), &(ctx_tmpl->ct_size));
 
 	if (error == CRYPTO_SUCCESS) {
-		ctx_tmpl->ct_generation = me->me_gen_swprov;
 		*ptmpl = ctx_tmpl;
 	} else {
 		kmem_free(ctx_tmpl, sizeof (kcf_ctx_template_t));
@@ -123,7 +122,7 @@ crypto_create_ctx_template(crypto_mechanism_t *mech, crypto_key_t *key,
  *		crypto_create_ctx_template()
  *
  * Description:
- *	Frees the inbedded crypto_spi_ctx_template_t, then the
+ *	Frees the embedded crypto_spi_ctx_template_t, then the
  *	kcf_ctx_template_t.
  *
  * Context:
@@ -140,7 +139,7 @@ crypto_destroy_ctx_template(crypto_ctx_template_t tmpl)
 
 	ASSERT(ctx_tmpl->ct_prov_tmpl != NULL);
 
-	bzero(ctx_tmpl->ct_prov_tmpl, ctx_tmpl->ct_size);
+	memset(ctx_tmpl->ct_prov_tmpl, 0, ctx_tmpl->ct_size);
 	kmem_free(ctx_tmpl->ct_prov_tmpl, ctx_tmpl->ct_size);
 	kmem_free(ctx_tmpl, sizeof (kcf_ctx_template_t));
 }

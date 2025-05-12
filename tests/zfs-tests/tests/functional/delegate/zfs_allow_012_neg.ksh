@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -7,7 +8,7 @@
 # You may not use this file except in compliance with the License.
 #
 # You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
+# or https://opensource.org/licenses/CDDL-1.0.
 # See the License for the specific language governing permissions
 # and limitations under the License.
 #
@@ -61,6 +62,12 @@ set -A perms	create snapshot mount send allow quota reservation \
 		devices exec volsize setuid readonly snapdir userprop \
 		rollback clone rename promote dnodesize \
 		zoned xattr receive destroy
+elif is_freebsd; then
+set -A perms	create snapshot mount send allow quota reservation \
+		recordsize mountpoint checksum compression canmount atime \
+		devices exec volsize setuid readonly snapdir userprop \
+		aclmode aclinherit rollback clone rename promote dnodesize \
+		jailed receive destroy
 else
 set -A perms	create snapshot mount send allow quota reservation \
 		recordsize mountpoint checksum compression canmount atime \

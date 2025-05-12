@@ -1,4 +1,4 @@
-/* BEGIN CSTYLED */
+// SPDX-License-Identifier: MIT
 /*
 ** $Id: llimits.h,v 1.103.1.1 2013/04/12 18:48:47 roberto Exp $
 ** Limits, basic types, and some other `installation-dependent' definitions
@@ -98,7 +98,7 @@ typedef LUAI_UACNUMBER l_uacNumber;
 /*
 ** non-return type
 **
-** Supress noreturn attribute in kernel builds to avoid objtool check warnings
+** Suppress noreturn attribute in kernel builds to avoid objtool check warnings
 */
 #if defined(__GNUC__) && !defined(_KERNEL)
 #define l_noret		void __attribute__((noreturn))
@@ -121,6 +121,12 @@ typedef LUAI_UACNUMBER l_uacNumber;
 #if !defined(LUAI_MAXCCALLS)
 #define LUAI_MAXCCALLS		20
 #endif
+
+/*
+ * Minimum amount of available stack space (in bytes) to make a C call.  With
+ * gsub() recursion, the stack space between each luaD_call() is 1256 bytes.
+ */
+#define LUAI_MINCSTACK		4096
 
 /*
 ** maximum number of upvalues in a closure (both C and Lua). (Value
@@ -281,8 +287,6 @@ union luai_Cast { double l_d; LUA_INT32 l_p[2]; };
 
 #if defined(ltable_c) && !defined(luai_hashnum)
 
-extern int lcompat_hashnum(int64_t);
-
 #define luai_hashnum(i,n) (i = lcompat_hashnum(n))
 
 #endif
@@ -307,4 +311,3 @@ extern int lcompat_hashnum(int64_t);
 #endif
 
 #endif
-/* END CSTYLED */

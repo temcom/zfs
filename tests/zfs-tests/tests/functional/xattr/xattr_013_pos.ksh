@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -7,7 +8,7 @@
 # You may not use this file except in compliance with the License.
 #
 # You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
+# or https://opensource.org/licenses/CDDL-1.0.
 # See the License for the specific language governing permissions
 # and limitations under the License.
 #
@@ -52,12 +53,6 @@ function cleanup {
 log_assert "The noxattr mount option functions as expected"
 log_onexit cleanup
 
-zfs set 2>&1 | grep xattr > /dev/null
-if [ $? -ne 0 ]
-then
-	log_unsupported "noxattr mount option not supported on this release."
-fi
-
 log_must touch $TESTDIR/myfile.$$
 create_xattr $TESTDIR/myfile.$$ passwd /etc/passwd
 
@@ -65,15 +60,7 @@ log_must umount $TESTDIR
 log_must zfs mount -o noxattr $TESTPOOL/$TESTFS
 
 # check that we can't perform xattr operations
-if is_linux; then
-	log_mustnot attr -q -g passwd $TESTDIR/myfile.$$
-	log_mustnot attr -q -r passwd $TESTDIR/myfile.$$
-	log_mustnot attr -q -s passwd $TESTDIR/myfile.$$ </etc/passwd
-
-	log_must touch $TESTDIR/new.$$
-	log_mustnot attr -q -s passwd $TESTDIR/new.$$ </etc/passwd
-	log_mustnot attr -q -r passwd $TESTDIR/new.$$
-else
+if is_illumos; then
 	log_mustnot eval "runat $TESTDIR/myfile.$$ cat passwd > /dev/null 2>&1"
 	log_mustnot eval "runat $TESTDIR/myfile.$$ rm passwd > /dev/null 2>&1"
 	log_mustnot eval "runat $TESTDIR/myfile.$$ cp /etc/passwd . \
@@ -83,6 +70,14 @@ else
 	log_mustnot eval "runat $TESTDIR/new.$$ cp /etc/passwd . \
 	    > /dev/null 2>&1"
 	log_mustnot eval "runat $TESTDIR/new.$$ rm passwd > /dev/null 2>&1"
+else
+	log_mustnot get_xattr passwd $TESTDIR/myfile.$$
+	log_mustnot rm_xattr passwd $TESTDIR/myfile.$$
+	log_mustnot set_xattr_stdin passwd $TESTDIR/myfile.$$ </etc/passwd
+
+	log_must touch $TESTDIR/new.$$
+	log_mustnot set_xattr_stdin passwd $TESTDIR/new.$$ </etc/passwd
+	log_mustnot rm_xattr passwd $TESTDIR/new.$$
 fi
 
 # now mount the filesystem again as normal
@@ -94,10 +89,10 @@ verify_xattr $TESTDIR/myfile.$$ passwd /etc/passwd
 
 # there should be no xattr on the file we created while the fs was mounted
 # -o noxattr
-if is_linux; then
-	log_mustnot attr -q -g passwd $TESTDIR/new.$$
-else
+if is_illumos; then
 	log_mustnot eval "runat $TESTDIR/new.$$ cat passwd > /dev/null 2>&1"
+else
+	log_mustnot get_xattr passwd $TESTDIR/new.$$
 fi
 create_xattr $TESTDIR/new.$$ passwd /etc/passwd
 

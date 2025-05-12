@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -7,7 +8,7 @@
 # You may not use this file except in compliance with the License.
 #
 # You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
+# or https://opensource.org/licenses/CDDL-1.0.
 # See the License for the specific language governing permissions
 # and limitations under the License.
 #
@@ -33,25 +34,19 @@
 #	"Verify 'zpool resilver' restarts in-progress resilvers"
 #
 # STRATEGY:
-#	1. Write some data and detatch the first drive so it has resilver
+#	1. Write some data and detach the first drive so it has resilver
 #	   work to do
 #	2. Repeat the process with a second disk
 #	3. Reattach the drives, causing the second drive's resilver to be
 #	   deferred
 #	4. Manually restart the resilver with all drives
 #
-# NOTES:
-#	Artificially limit the scrub speed by setting the zfs_scan_vdev_limit
-#	low and adding a 50ms zio delay in order to ensure that the resilver
-#	does not complete early.
-#
 
 verify_runnable "global"
 
 function cleanup
 {
-	log_must zinject -c all
-	log_must set_tunable64 zfs_scan_vdev_limit $ZFS_SCAN_VDEV_LIMIT_DEFAULT
+	log_must set_tunable32 SCAN_SUSPEND_PROGRESS 0
 	log_must rm -f $mntpnt/biggerfile1
 	log_must rm -f $mntpnt/biggerfile2
 }
@@ -62,33 +57,30 @@ log_assert "Verify 'zpool resilver' restarts in-progress resilvers"
 
 mntpnt=$(get_prop mountpoint $TESTPOOL/$TESTFS)
 
-# 1. Write some data and detatch the first drive so it has resilver work to do
+# 1. Write some data and detach the first drive so it has resilver work to do
 log_must file_write -b 524288 -c 1024 -o create -d 0 -f $mntpnt/biggerfile1
-log_must sync
+sync_all_pools
 log_must zpool detach $TESTPOOL $DISK2
 
 # 2. Repeat the process with a second disk
 log_must file_write -b 524288 -c 1024 -o create -d 0 -f $mntpnt/biggerfile2
-log_must sync
+sync_all_pools
 log_must zpool detach $TESTPOOL $DISK3
 
 # 3. Reattach the drives, causing the second drive's resilver to be deferred
-log_must set_tunable64 zfs_scan_vdev_limit $ZFS_SCAN_VDEV_LIMIT_SLOW
+log_must set_tunable32 SCAN_SUSPEND_PROGRESS 1
 
 log_must zpool attach $TESTPOOL $DISK1 $DISK2
-log_must zinject -d $DISK2 -D50:1 $TESTPOOL
 log_must is_pool_resilvering $TESTPOOL true
 
 log_must zpool attach $TESTPOOL $DISK1 $DISK3
-log_must zinject -d $DISK3 -D50:1 $TESTPOOL
 log_must is_pool_resilvering $TESTPOOL true
 
 # 4. Manually restart the resilver with all drives
 log_must zpool resilver $TESTPOOL
-log_must zinject -c all
-log_must set_tunable64 zfs_scan_vdev_limit $ZFS_SCAN_VDEV_LIMIT_DEFAULT
-log_must wait_for_resilver_end $TESTPOOL $MAXTIMEOUT
 log_must is_deferred_scan_started $TESTPOOL
+log_must set_tunable32 SCAN_SUSPEND_PROGRESS 0
+log_must wait_for_resilver_end $TESTPOOL $MAXTIMEOUT
 log_must check_state $TESTPOOL "$DISK2" "online"
 log_must check_state $TESTPOOL "$DISK3" "online"
 

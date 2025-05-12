@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # This file and its contents are supplied under the terms of the
 # Common Development and Distribution License ("CDDL"), version 1.0.
@@ -13,8 +14,6 @@
 #
 # Copyright (c) 2016 by Delphix. All rights reserved.
 #
-
-verify_runnable "global"
 
 . $STF_SUITE/tests/functional/channel_program/channel_common.kshlib
 
@@ -47,17 +46,13 @@ set -A args 'function() return 1 end' \
 typeset -i last_index=$((${#args[*]} - 1))
 for i in $(seq 0 $last_index); do
 	log_note "running program: ${args[i]}"
-	log_mustnot_checkerror_program "execution failed" $TESTPOOL - <<-EOF
-		return ${args[i]}
-	EOF
+	log_mustnot_checkerror_program "execution failed" $TESTPOOL - <<<"return ${args[i]}"
 	((i = i + 1))
 done
 
 for i in $(seq 0 $last_index); do
 	log_note "running program: ${args[i]}"
-	log_mustnot_checkerror_program "execution failed" $TESTPOOL - <<-EOF
-		error(${args[i]})
-	EOF
+	log_mustnot_checkerror_program "execution failed" $TESTPOOL - <<<"error(${args[i]})"
 	((i = i + 1))
 done
 

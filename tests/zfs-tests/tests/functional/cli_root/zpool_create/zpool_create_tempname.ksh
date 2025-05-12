@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # This file and its contents are supplied under the terms of the
 # Common Development and Distribution License ("CDDL"), version 1.0.
@@ -30,9 +31,11 @@ verify_runnable "global"
 
 function cleanup
 {
-	destroy_pool $TESTPOOL
-	destroy_pool $TEMPPOOL
+	typeset pool
 
+	for pool in $TESTPOOL $TEMPPOOL; do
+		poolexists $pool && destroy_pool $pool
+	done
 }
 
 log_assert "'zpool create -t <tempname>' can create a pool with the specified" \
@@ -48,16 +51,14 @@ typeset fsprops=('canmount=off' 'mountpoint=none' 'utf8only=on'
 for poolprop in "${poolprops[@]}"; do
 	for fsprop in "${fsprops[@]}"; do
 		# 1. Create a pool with '-t' option
-		log_must zpool create $TESTPOOL -t $TEMPPOOL \
-			-O $fsprop -o $poolprop $DISKS
+		log_must zpool create -t $TEMPPOOL -O $fsprop -o $poolprop \
+			$TESTPOOL $DISKS
 		# 2. Verify the pool is created with the specified temporary name
 		log_must poolexists $TEMPPOOL
 		log_mustnot poolexists $TESTPOOL
-		propname="$(awk -F= '{print $1}' <<< $fsprop)"
-		propval="$(awk -F= '{print $2}' <<< $fsprop)"
+		IFS='=' read -r propname propval <<<"$fsprop"
 		log_must test "$(get_prop $propname $TEMPPOOL)" == "$propval"
-		propname="$(awk -F= '{print $1}' <<< $poolprop)"
-		propval="$(awk -F= '{print $2}' <<< $poolprop)"
+		IFS='=' read -r propname propval <<<"$poolprop"
 		log_must test "$(get_pool_prop $propname $TEMPPOOL)" == "$propval"
 		# Cleanup
 		destroy_pool $TEMPPOOL

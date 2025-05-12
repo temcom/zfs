@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: CDDL-1.0
 /*
  * CDDL HEADER START
  *
@@ -6,7 +7,7 @@
  * You may not use this file except in compliance with the License.
  *
  * You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
- * or http://www.opensolaris.org/os/licensing.
+ * or https://opensource.org/licenses/CDDL-1.0.
  * See the License for the specific language governing permissions
  * and limitations under the License.
  *
@@ -37,7 +38,7 @@ int spa_checkpoint(const char *);
 int spa_checkpoint_discard(const char *);
 
 boolean_t spa_checkpoint_discard_thread_check(void *, zthr_t *);
-int spa_checkpoint_discard_thread(void *, zthr_t *);
+void spa_checkpoint_discard_thread(void *, zthr_t *);
 
 int spa_checkpoint_get_stats(spa_t *, pool_checkpoint_stat_t *);
 

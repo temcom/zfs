@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -7,7 +8,7 @@
 # You may not use this file except in compliance with the License.
 #
 # You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
+# or https://opensource.org/licenses/CDDL-1.0.
 # See the License for the specific language governing permissions
 # and limitations under the License.
 #
@@ -37,7 +38,7 @@
 # return an error.
 #
 # STRATEGY:
-# 1. Create an array containg each zpool sub-command name.
+# 1. Create an array containing each zpool sub-command name.
 # 2. For each element, execute the sub-command.
 # 3. Verify it returns an error.
 #

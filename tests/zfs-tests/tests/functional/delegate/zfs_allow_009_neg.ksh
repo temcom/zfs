@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -7,7 +8,7 @@
 # You may not use this file except in compliance with the License.
 #
 # You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
+# or https://opensource.org/licenses/CDDL-1.0.
 # See the License for the specific language governing permissions
 # and limitations under the License.
 #
@@ -36,7 +37,7 @@
 #	zfs allow can deal with invalid arguments.(Invalid options or combination)
 #
 # STRATEGY:
-#	1. Verify invalid argumets will cause error.
+#	1. Verify invalid arguments will cause error.
 #	2. Verify non-optional argument was missing will cause error.
 #	3. Verify invalid options cause error.
 #
@@ -51,7 +52,6 @@ longset="set123456789012345678901234567890123456789012345678901234567890123"
 for dtst in $DATASETS ; do
 	log_mustnot eval "zfs allow -s @$longset $dtst"
 	# Create non-existent permission set
-	typeset timestamp=$(date +'%F-%R:%S')
 	log_mustnot zfs allow -s @non-existent $dtst
 	log_mustnot zfs allow $STAFF "atime,created,mounted" $dtst
 	log_mustnot zfs allow $dtst $TESTPOOL

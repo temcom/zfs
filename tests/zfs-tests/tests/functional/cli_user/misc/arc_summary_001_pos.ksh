@@ -1,4 +1,5 @@
 #! /bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -7,7 +8,7 @@
 # You may not use this file except in compliance with the License.
 #
 # You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
+# or https://opensource.org/licenses/CDDL-1.0.
 # See the License for the specific language governing permissions
 # and limitations under the License.
 #
@@ -27,17 +28,18 @@
 
 . $STF_SUITE/include/libtest.shlib
 
-set -A args  "" "-a" "-d" "-p 1"
+is_freebsd && ! python3 -c 'import sysctl' 2>/dev/null && log_unsupported "python3 sysctl module missing"
 
-log_assert "arc_summary.py generates output and doesn't return an error code"
+log_assert "arc_summary generates output and doesn't return an error code"
 
-typeset -i i=0
-while [[ $i -lt ${#args[*]} ]]; do
-        log_must eval "arc_summary.py ${args[i]} > /dev/null"
-        ((i = i + 1))
+# Without this, the below checks aren't going to work the way we hope...
+set -o pipefail
+
+for arg in "" "-a" "-d" "-p 1" "-g" "-s arc" "-r"; do
+	log_must eval "arc_summary $arg > /dev/null"
 done
 
-log_must eval "arc_summary.py | head > /dev/null"
-log_must eval "arc_summary.py | head -1 > /dev/null"
+log_must eval "arc_summary | head > /dev/null"
+log_must eval "arc_summary | head -1 > /dev/null"
 
-log_pass "arc_summary.py generates output and doesn't return an error code"
+log_pass "arc_summary generates output and doesn't return an error code"

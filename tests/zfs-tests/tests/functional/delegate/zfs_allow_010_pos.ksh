@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -7,7 +8,7 @@
 # You may not use this file except in compliance with the License.
 #
 # You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
+# or https://opensource.org/licenses/CDDL-1.0.
 # See the License for the specific language governing permissions
 # and limitations under the License.
 #
@@ -86,7 +87,50 @@ set -A perms	create		true		false	\
 		clone		true		true	\
 		promote		true		true	\
 		xattr		true		false	\
-		receive		true		false
+		receive		true		false	\
+		receive:append	true		false
+
+elif is_freebsd; then
+#				Results in	Results in
+#		Permission	Filesystem	Volume
+#
+# Removed for FreeBSD
+# - jailed	- jailing requires superuser privileges
+# - sharenfs	- sharing requires superuser privileges
+# - share	- sharing requires superuser privileges
+# - xattr	- Not supported on FreeBSD
+#
+set -A perms	create		true		false	\
+		snapshot	true		true	\
+		mount		true		false	\
+		send		true		true	\
+		allow		true		true	\
+		quota		true		false	\
+		reservation	true		true	\
+		dnodesize	true		false	\
+		recordsize	true		false	\
+		mountpoint	true		false	\
+		checksum	true		true	\
+		compression	true		true	\
+		canmount	true		false	\
+		atime		true		false	\
+		devices		true		false	\
+		exec		true		false	\
+		volsize		false		true	\
+		setuid		true		false	\
+		readonly	true		true	\
+		snapdir		true		false	\
+		userprop	true		true	\
+		aclmode		true		false	\
+		aclinherit	true		false	\
+		rollback	true		true	\
+		clone		true		true	\
+		rename		true		true	\
+		promote		true		true	\
+		receive		true		false   \
+		receive:append	true		false	\
+		destroy		true		true
+
 else
 
 set -A perms	create		true		false	\
@@ -119,6 +163,7 @@ set -A perms	create		true		false	\
 		zoned		true		false	\
 		xattr		true		false	\
 		receive		true		false	\
+		receive:append	true		false	\
 		destroy		true		true
 
 if is_global_zone; then

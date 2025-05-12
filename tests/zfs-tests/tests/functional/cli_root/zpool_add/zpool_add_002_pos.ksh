@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -7,7 +8,7 @@
 # You may not use this file except in compliance with the License.
 #
 # You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
+# or https://opensource.org/licenses/CDDL-1.0.
 # See the License for the specific language governing permissions
 # and limitations under the License.
 #
@@ -48,10 +49,7 @@ verify_runnable "global"
 
 function cleanup
 {
-        poolexists $TESTPOOL && \
-                destroy_pool $TESTPOOL
-
-	partition_cleanup
+        poolexists $TESTPOOL && destroy_pool $TESTPOOL
 }
 
 log_assert "'zpool add -f <pool> <vdev> ...' can successfully add" \
@@ -59,14 +57,24 @@ log_assert "'zpool add -f <pool> <vdev> ...' can successfully add" \
 
 log_onexit cleanup
 
-create_pool "$TESTPOOL" mirror "${disk}${SLICE_PREFIX}${SLICE0}" \
-	"${disk}${SLICE_PREFIX}${SLICE1}"
-log_must poolexists "$TESTPOOL"
+create_pool $TESTPOOL mirror $DISK0 $DISK1
+log_must poolexists $TESTPOOL
 
-log_mustnot zpool add "$TESTPOOL" ${disk}${SLICE_PREFIX}${SLICE3}
-log_mustnot vdevs_in_pool "$TESTPOOL" "${disk}${SLICE_PREFIX}${SLICE3}"
+log_mustnot zpool add $TESTPOOL $DISK2
+log_mustnot vdevs_in_pool $TESTPOOL $DISK2
 
-log_must zpool add -f "$TESTPOOL" ${disk}${SLICE_PREFIX}${SLICE3}
-log_must vdevs_in_pool "$TESTPOOL" "${disk}${SLICE_PREFIX}${SLICE3}"
+log_must zpool add -f $TESTPOOL $DISK2
+log_must vdevs_in_pool $TESTPOOL $DISK2
+
+log_must zpool destroy $TESTPOOL
+
+create_pool $TESTPOOL mirror $DISK0 $DISK1
+log_must poolexists $TESTPOOL
+
+log_mustnot zpool add $TESTPOOL $DISK2
+log_mustnot vdevs_in_pool $TESTPOOL $DISK2
+
+log_must zpool add --allow-replication-mismatch $TESTPOOL $DISK2
+log_must vdevs_in_pool $TESTPOOL $DISK2
 
 log_pass "'zpool add -f <pool> <vdev> ...' executes successfully."

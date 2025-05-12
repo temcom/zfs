@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -7,7 +8,7 @@
 # You may not use this file except in compliance with the License.
 #
 # You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
+# or https://opensource.org/licenses/CDDL-1.0.
 # See the License for the specific language governing permissions
 # and limitations under the License.
 #
@@ -36,8 +37,8 @@
 # 'zfs inherit' should return an error with bad parameters in one command.
 #
 # STRATEGY:
-# 1. Set an array of bad options and invlid properties to 'zfs inherit'
-# 2. Execute 'zfs inherit' with bad options and passing invlid properties
+# 1. Set an array of bad options and invalid properties to 'zfs inherit'
+# 2. Execute 'zfs inherit' with bad options and passing invalid properties
 # 3. Verify an error is returned.
 #
 
@@ -45,9 +46,8 @@ verify_runnable "both"
 
 function cleanup
 {
-	if snapexists $TESTPOOL/$TESTFS@$TESTSNAP; then
-		log_must zfs destroy $TESTPOOL/$TESTFS@$TESTSNAP
-	fi
+	snapexists $TESTPOOL/$TESTFS@$TESTSNAP && \
+		destroy_dataset $TESTPOOL/$TESTFS@$TESTSNAP
 }
 
 log_assert "'zfs inherit' should return an error with bad parameters in" \
@@ -56,8 +56,13 @@ log_onexit cleanup
 
 set -A badopts "r" "R" "-R" "-rR" "-a" "-" "-?" "-1" "-2" "-v" "-n"
 set -A props "recordsize" "mountpoint" "sharenfs" "checksum" "compression" \
-    "atime" "devices" "exec" "setuid" "readonly" "zoned" "snapdir" "aclmode" \
+    "atime" "devices" "exec" "setuid" "readonly" "snapdir" "aclmode" \
     "aclinherit" "xattr" "copies"
+if is_freebsd; then
+	props+=("jailed")
+else
+	props+=("zoned")
+fi
 set -A illprops "recordsiz" "mountpont" "sharen" "compres" "atme" "blah"
 
 log_must zfs snapshot $TESTPOOL/$TESTFS@$TESTSNAP

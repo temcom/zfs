@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -7,7 +8,7 @@
 # You may not use this file except in compliance with the License.
 #
 # You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
+# or https://opensource.org/licenses/CDDL-1.0.
 # See the License for the specific language governing permissions
 # and limitations under the License.
 #
@@ -46,14 +47,9 @@
 
 function cleanup
 {
-	if poolexists $TESTPOOL ; then
-                destroy_pool $TESTPOOL
-        fi
-	if [ -d /${TESTPOOL}.root ]
-	then
-		log_must rmdir /${TESTPOOL}.root
-	fi
-	[[ -e $values ]] && log_must rm -f $values
+	poolexists $TESTPOOL && destroy_pool $TESTPOOL
+	rm -rf /${TESTPOOL}.root
+	rm -f $values
 }
 
 log_onexit cleanup
@@ -62,18 +58,12 @@ log_assert "zpool create -R works as expected"
 
 typeset values=$TEST_BASE_DIR/values.$$
 
-if [[ -n $DISK ]]; then
-	disk=$DISK
-else
-	disk=$DISK0
-fi
-
 log_must rm -f /etc/zfs/zpool.cache
-log_must mkdir /${TESTPOOL}.root
-log_must zpool create -R /${TESTPOOL}.root $TESTPOOL $disk
+log_must rm -rf /${TESTPOOL}.root
+log_must zpool create -R /${TESTPOOL}.root $TESTPOOL $DISK0
 if [ ! -d /${TESTPOOL}.root ]
 then
-	log_fail "Mountpoint was not create when using zpool with -R flag!"
+	log_fail "Mountpoint was not created when using zpool with -R flag!"
 fi
 
 FS=$(zfs list $TESTPOOL)
@@ -86,25 +76,16 @@ log_must zpool get all $TESTPOOL
 zpool get all $TESTPOOL > $values
 
 # check for the cachefile property, verifying that it's set to 'none'
-grep "$TESTPOOL[ ]*cachefile[ ]*none" $values > /dev/null 2>&1
-if [ $? -ne 0 ]
-then
-	log_fail "zpool property \'cachefile\' was not set to \'none\'."
-fi
+log_must grep -q "$TESTPOOL[ ]*cachefile[ ]*none" $values
 
 # check that the root = /mountpoint property is set correctly
-grep "$TESTPOOL[ ]*altroot[ ]*/${TESTPOOL}.root" $values > /dev/null 2>&1
-if [ $? -ne 0 ]
-then
-	log_fail "zpool property root was not found in pool output."
-fi
+log_must grep -q "$TESTPOOL[ ]*altroot[ ]*/${TESTPOOL}.root" $values
 
 rm $values
 
 # finally, check that the pool has no reference in /etc/zfs/zpool.cache
 if [[ -f /etc/zfs/zpool.cache ]] ; then
-	REF=$(strings /etc/zfs/zpool.cache | grep ${TESTPOOL})
-	if [ ! -z "$REF" ]
+	if strings /etc/zfs/zpool.cache | grep -q ${TESTPOOL}
 	then
 		strings /etc/zfs/zpool.cache
 		log_fail "/etc/zfs/zpool.cache appears to have a reference to $TESTPOOL"

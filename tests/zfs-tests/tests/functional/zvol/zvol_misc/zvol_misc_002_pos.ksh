@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -7,7 +8,7 @@
 # You may not use this file except in compliance with the License.
 #
 # You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
+# or https://opensource.org/licenses/CDDL-1.0.
 # See the License for the specific language governing permissions
 # and limitations under the License.
 #
@@ -48,13 +49,12 @@ volsize=$(zfs get -H -o value volsize $TESTPOOL/$TESTVOL)
 
 function cleanup
 {
-	snapexists $TESTPOOL/$TESTVOL@snap && \
-		zfs destroy $TESTPOOL/$TESTVOL@snap
+	snapexists $TESTPOOL/$TESTVOL@snap &&
+		destroy_dataset $TESTPOOL/$TESTVOL@snap
 
-	ismounted $TESTDIR $NEWFS_DEFAULT_FS
-	(( $? == 0 )) && log_must umount $TESTDIR
+	ismounted $TESTDIR $NEWFS_DEFAULT_FS &&
+		log_must umount $TESTDIR
 
-	[[ -e $TESTDIR ]] && rm -rf $TESTDIR
 	zfs set volsize=$volsize $TESTPOOL/$TESTVOL
 }
 
@@ -67,27 +67,20 @@ NUM_WRITES=40
 
 log_must zfs set volsize=128m $TESTPOOL/$TESTVOL
 
-echo "y" | newfs -v ${ZVOL_RDEVDIR}/$TESTPOOL/$TESTVOL >/dev/null 2>&1
-(( $? != 0 )) && log_fail "Unable to newfs(1M) $TESTPOOL/$TESTVOL"
+log_must new_fs ${ZVOL_RDEVDIR}/$TESTPOOL/$TESTVOL
 
-log_must mkdir $TESTDIR
 log_must mount ${ZVOL_DEVDIR}/$TESTPOOL/$TESTVOL $TESTDIR
 
 typeset -i fn=0
 typeset -i retval=0
 
-while (( 1 )); do
-	file_write -o create -f $TESTDIR/testfile$$.$fn \
-	    -b $BLOCKSZ -c $NUM_WRITES
-	retval=$?
-	if (( $retval != 0 )); then
-		break
-	fi
+while file_write -o create -f $TESTDIR/testfile$$.$fn \
+	    -b $BLOCKSZ -c $NUM_WRITES; do
 	(( fn = fn + 1 ))
 done
 
-if is_linux; then
-	log_must sync
+if is_linux || is_freebsd ; then
+	sync_all_pools
 else
 	log_must lockfs -f $TESTDIR
 fi

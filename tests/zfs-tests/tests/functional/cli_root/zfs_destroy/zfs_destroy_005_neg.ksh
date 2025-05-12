@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -7,7 +8,7 @@
 # You may not use this file except in compliance with the License.
 #
 # You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
+# or https://opensource.org/licenses/CDDL-1.0.
 # See the License for the specific language governing permissions
 # and limitations under the License.
 #
@@ -145,8 +146,8 @@ if is_global_zone; then
 	check_dataset datasetexists $CTR $VOL
 	check_dataset datasetnonexists $VOLSNAP $VOLCLONE
 
-	# Due to recusive destroy being a best-effort operation,
-	# all of the non-busy datasets bellow should be gone now.
+	# Due to recursive destroy being a best-effort operation,
+	# all of the non-busy datasets below should be gone now.
 	check_dataset datasetnonexists $FS $FSSNAP $FSCLONE
 fi
 

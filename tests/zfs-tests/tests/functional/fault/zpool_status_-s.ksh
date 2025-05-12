@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -7,7 +8,7 @@
 # You may not use this file except in compliance with the License.
 #
 # You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
+# or https://opensource.org/licenses/CDDL-1.0.
 # See the License for the specific language governing permissions
 # and limitations under the License.
 #
@@ -41,14 +42,14 @@ DISK=${DISKS%% *}
 
 verify_runnable "both"
 
-log_must zpool create $TESTPOOL mirror ${DISKS}
+default_mirror_setup_noexit $DISKS
 
 function cleanup
 {
 	log_must zinject -c all
-	log_must set_tunable64 zio_slow_io_ms $OLD_SLOW_IO
-	log_must set_tunable64 zfs_slow_io_events_per_second $OLD_SLOW_IO_EVENTS
-	log_must destroy_pool $TESTPOOL
+	log_must set_tunable64 ZIO_SLOW_IO_MS $OLD_SLOW_IO
+	log_must set_tunable64 SLOW_IO_EVENTS_PER_SECOND $OLD_SLOW_IO_EVENTS
+	default_cleanup_noexit
 }
 
 log_onexit cleanup
@@ -56,22 +57,21 @@ log_onexit cleanup
 log_must zpool events -c
 
 # Mark any IOs greater than 10ms as slow IOs
-OLD_SLOW_IO=$(get_tunable zio_slow_io_ms)
-OLD_SLOW_IO_EVENTS=$(get_tunable zfs_slow_io_events_per_second)
-log_must set_tunable64 zio_slow_io_ms 10
-log_must set_tunable64 zfs_slow_io_events_per_second 1000
+OLD_SLOW_IO=$(get_tunable ZIO_SLOW_IO_MS)
+OLD_SLOW_IO_EVENTS=$(get_tunable SLOW_IO_EVENTS_PER_SECOND)
+log_must set_tunable64 ZIO_SLOW_IO_MS 10
+log_must set_tunable64 SLOW_IO_EVENTS_PER_SECOND 1000
 
 # Create 20ms IOs
 log_must zinject -d $DISK -D20:100 $TESTPOOL
 log_must mkfile 1048576 /$TESTPOOL/testfile
-log_must zpool sync $TESTPOOL
+sync_pool $TESTPOOL
 
 log_must zinject -c all
-SLOW_IOS=$(zpool status -sp | grep "$DISK" | awk '{print $6}')
-DELAY_EVENTS=$(zpool events | grep delay | wc -l)
+SLOW_IOS=$(zpool status -sp | awk -v d="$DISK" '$0 ~ d {print $6}')
+DELAY_EVENTS=$(zpool events | grep -c delay)
 
-if [ $SLOW_IOS -gt 0 ] && [ $DELAY_EVENTS -gt 0 ] ; then
-	log_pass "Correctly saw $SLOW_IOS slow IOs and $DELAY_EVENTS delay events"
-else
-	log_fail "Only saw $SLOW_IOS slow IOs and $DELAY_EVENTS delay events"
-fi
+log_must [ $SLOW_IOS -gt 0 ]
+log_must [ $DELAY_EVENTS -gt 0 ]
+
+log_pass "Correctly saw $SLOW_IOS slow IOs and $DELAY_EVENTS delay events"

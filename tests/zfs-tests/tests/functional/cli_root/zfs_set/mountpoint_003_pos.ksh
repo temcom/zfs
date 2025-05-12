@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -7,7 +8,7 @@
 # You may not use this file except in compliance with the License.
 #
 # You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
+# or https://opensource.org/licenses/CDDL-1.0.
 # See the License for the specific language governing permissions
 # and limitations under the License.
 #
@@ -76,6 +77,14 @@ if is_linux; then
 	if [[ $(linux_version) -lt $(linux_version "4.4") ]]; then
 		args+=("mand" "nomand")
 	fi
+elif is_freebsd; then
+	# 'xattr' and 'devices' are not supported on FreeBSD
+	# Perhaps more options need to be added.
+	set -A args \
+	"noexec"	"exec"	\
+	"ro"		"rw"	\
+	"nosuid"	"suid"	\
+	"atime"		"noatime"
 else
 	set -A args \
 	"devices"	"/devices/"	"nodevices"	"/nodevices/"	\
@@ -96,15 +105,13 @@ log_must zfs set mountpoint=legacy $testfs
 
 typeset i=0
 while ((i < ${#args[@]})); do
-	if is_linux; then
+	if is_linux || is_freebsd; then
 		log_must mount -t zfs -o ${args[$i]} $testfs $tmpmnt
 		
 		msg=$(mount | grep "$tmpmnt ")
-		
-		echo $msg | grep "${args[((i))]}" > /dev/null 2>&1
-		if (($? != 0)) ; then
-			echo $msg | grep "${args[((i-1))]}" > /dev/null 2>&1
-			if (($? == 0)) ; then
+
+		if ! echo $msg | grep -q "${args[((i))]}"; then
+			if echo $msg | grep -q "${args[((i-1))]}"; then
 				log_fail "Expected option: ${args[((i))]} \n" \
 					 "Real option: $msg"
 			fi
@@ -122,8 +129,7 @@ while ((i < ${#args[@]})); do
 			args[((i+1))]="/nodevices/"
 		fi
 
-		echo $msg | grep "${args[((i+1))]}" > /dev/null 2>&1
-		if (($? != 0)) ; then
+		if ! echo $msg | grep -q "${args[((i+1))]}"; then
 			log_fail "Expected option: ${args[((i+1))]} \n" \
 				 "Real option: $msg"
 		fi

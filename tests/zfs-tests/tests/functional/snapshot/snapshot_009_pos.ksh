@@ -1,4 +1,5 @@
 #! /bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -7,7 +8,7 @@
 # You may not use this file except in compliance with the License.
 #
 # You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
+# or https://opensource.org/licenses/CDDL-1.0.
 # See the License for the specific language governing permissions
 # and limitations under the License.
 #
@@ -88,7 +89,7 @@ else
 fi
 
 log_must zfs snapshot -r $snappool
-log_must block_device_wait
+block_device_wait
 
 #verify the snapshot -r results
 for snap in $snappool $snapfs $snapvol $snapctr $snapctrvol \

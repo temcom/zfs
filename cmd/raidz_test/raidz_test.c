@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: CDDL-1.0
 /*
  * CDDL HEADER START
  *
@@ -6,7 +7,7 @@
  * You may not use this file except in compliance with the License.
  *
  * You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
- * or http://www.opensolaris.org/os/licensing.
+ * or https://opensource.org/licenses/CDDL-1.0.
  * See the License for the specific language governing permissions
  * and limitations under the License.
  *
@@ -37,11 +38,11 @@
 static int *rand_data;
 raidz_test_opts_t rto_opts;
 
-static char gdb[256];
-static const char gdb_tmpl[] = "gdb -ex \"set pagination 0\" -p %d";
+static char pid_s[16];
 
 static void sig_handler(int signo)
 {
+	int old_errno = errno;
 	struct sigaction action;
 	/*
 	 * Restore default action and re-raise signal so SIGSEGV and
@@ -52,22 +53,32 @@ static void sig_handler(int signo)
 	action.sa_flags = 0;
 	(void) sigaction(signo, &action, NULL);
 
-	if (rto_opts.rto_gdb)
-		if (system(gdb)) { }
+	if (rto_opts.rto_gdb) {
+		pid_t pid = fork();
+		if (pid == 0) {
+			execlp("gdb", "gdb", "-ex", "set pagination 0",
+			    "-p", pid_s, NULL);
+			_exit(-1);
+		} else if (pid > 0)
+			while (waitpid(pid, NULL, 0) == -1 && errno == EINTR)
+				;
+	}
 
 	raise(signo);
+	errno = old_errno;
 }
 
 static void print_opts(raidz_test_opts_t *opts, boolean_t force)
 {
-	char *verbose;
+	const char *verbose;
 	switch (opts->rto_v) {
-		case 0:
+		case D_ALL:
 			verbose = "no";
 			break;
-		case 1:
+		case D_INFO:
 			verbose = "info";
 			break;
+		case D_DEBUG:
 		default:
 			verbose = "debug";
 			break;
@@ -77,16 +88,20 @@ static void print_opts(raidz_test_opts_t *opts, boolean_t force)
 		(void) fprintf(stdout, DBLSEP "Running with options:\n"
 		    "  (-a) zio ashift                   : %zu\n"
 		    "  (-o) zio offset                   : 1 << %zu\n"
+		    "  (-e) expanded map                 : %s\n"
+		    "  (-r) reflow offset                : %llx\n"
 		    "  (-d) number of raidz data columns : %zu\n"
 		    "  (-s) size of DATA                 : 1 << %zu\n"
 		    "  (-S) sweep parameters             : %s \n"
 		    "  (-v) verbose                      : %s \n\n",
-		    opts->rto_ashift,			/* -a */
-		    ilog2(opts->rto_offset),		/* -o */
-		    opts->rto_dcols,			/* -d */
-		    ilog2(opts->rto_dsize),		/* -s */
-		    opts->rto_sweep ? "yes" : "no",	/* -S */
-		    verbose);				/* -v */
+		    opts->rto_ashift,				/* -a */
+		    ilog2(opts->rto_offset),			/* -o */
+		    opts->rto_expand ? "yes" : "no",		/* -e */
+		    (u_longlong_t)opts->rto_expand_offset,	/* -r */
+		    opts->rto_dcols,				/* -d */
+		    ilog2(opts->rto_dsize),			/* -s */
+		    opts->rto_sweep ? "yes" : "no",		/* -S */
+		    verbose);					/* -v */
 	}
 }
 
@@ -104,7 +119,9 @@ static void usage(boolean_t requested)
 	    "\t[-S parameter sweep (default: %s)]\n"
 	    "\t[-t timeout for parameter sweep test]\n"
 	    "\t[-B benchmark all raidz implementations]\n"
-	    "\t[-v increase verbosity (default: %zu)]\n"
+	    "\t[-e use expanded raidz map (default: %s)]\n"
+	    "\t[-r expanded raidz map reflow offset (default: %llx)]\n"
+	    "\t[-v increase verbosity (default: %d)]\n"
 	    "\t[-h (print help)]\n"
 	    "\t[-T test the test, see if failure would be detected]\n"
 	    "\t[-D debug (attach gdb on SIGSEGV)]\n"
@@ -114,7 +131,9 @@ static void usage(boolean_t requested)
 	    o->rto_dcols,				/* -d */
 	    ilog2(o->rto_dsize),			/* -s */
 	    rto_opts.rto_sweep ? "yes" : "no",		/* -S */
-	    o->rto_v);					/* -d */
+	    rto_opts.rto_expand ? "yes" : "no",		/* -e */
+	    (u_longlong_t)o->rto_expand_offset,		/* -r */
+	    o->rto_v);					/* -v */
 
 	exit(requested ? 0 : 1);
 }
@@ -123,18 +142,21 @@ static void process_options(int argc, char **argv)
 {
 	size_t value;
 	int opt;
-
 	raidz_test_opts_t *o = &rto_opts;
 
-	bcopy(&rto_opts_defaults, o, sizeof (*o));
+	memcpy(o, &rto_opts_defaults, sizeof (*o));
 
-	while ((opt = getopt(argc, argv, "TDBSvha:o:d:s:t:")) != -1) {
-		value = 0;
-
+	while ((opt = getopt(argc, argv, "TDBSvha:er:o:d:s:t:")) != -1) {
 		switch (opt) {
 		case 'a':
 			value = strtoull(optarg, NULL, 0);
 			o->rto_ashift = MIN(13, MAX(9, value));
+			break;
+		case 'e':
+			o->rto_expand = 1;
+			break;
+		case 'r':
+			o->rto_expand_offset = strtoull(optarg, NULL, 0);
 			break;
 		case 'o':
 			value = strtoull(optarg, NULL, 0);
@@ -179,25 +201,34 @@ static void process_options(int argc, char **argv)
 	}
 }
 
-#define	DATA_COL(rm, i) ((rm)->rm_col[raidz_parity(rm) + (i)].rc_abd)
-#define	DATA_COL_SIZE(rm, i) ((rm)->rm_col[raidz_parity(rm) + (i)].rc_size)
+#define	DATA_COL(rr, i) ((rr)->rr_col[rr->rr_firstdatacol + (i)].rc_abd)
+#define	DATA_COL_SIZE(rr, i) ((rr)->rr_col[rr->rr_firstdatacol + (i)].rc_size)
 
-#define	CODE_COL(rm, i) ((rm)->rm_col[(i)].rc_abd)
-#define	CODE_COL_SIZE(rm, i) ((rm)->rm_col[(i)].rc_size)
+#define	CODE_COL(rr, i) ((rr)->rr_col[(i)].rc_abd)
+#define	CODE_COL_SIZE(rr, i) ((rr)->rr_col[(i)].rc_size)
 
 static int
 cmp_code(raidz_test_opts_t *opts, const raidz_map_t *rm, const int parity)
 {
-	int i, ret = 0;
+	int r, i, ret = 0;
 
 	VERIFY(parity >= 1 && parity <= 3);
 
-	for (i = 0; i < parity; i++) {
-		if (abd_cmp(CODE_COL(rm, i), CODE_COL(opts->rm_golden, i))
-		    != 0) {
-			ret++;
-			LOG_OPT(D_DEBUG, opts,
-			    "\nParity block [%d] different!\n", i);
+	for (r = 0; r < rm->rm_nrows; r++) {
+		raidz_row_t * const rr = rm->rm_row[r];
+		raidz_row_t * const rrg = opts->rm_golden->rm_row[r];
+		for (i = 0; i < parity; i++) {
+			if (CODE_COL_SIZE(rrg, i) == 0) {
+				VERIFY0(CODE_COL_SIZE(rr, i));
+				continue;
+			}
+
+			if (abd_cmp(CODE_COL(rr, i),
+			    CODE_COL(rrg, i)) != 0) {
+				ret++;
+				LOG_OPT(D_DEBUG, opts,
+				    "\nParity block [%d] different!\n", i);
+			}
 		}
 	}
 	return (ret);
@@ -206,16 +237,26 @@ cmp_code(raidz_test_opts_t *opts, const raidz_map_t *rm, const int parity)
 static int
 cmp_data(raidz_test_opts_t *opts, raidz_map_t *rm)
 {
-	int i, ret = 0;
-	int dcols = opts->rm_golden->rm_cols - raidz_parity(opts->rm_golden);
+	int r, i, dcols, ret = 0;
 
-	for (i = 0; i < dcols; i++) {
-		if (abd_cmp(DATA_COL(opts->rm_golden, i), DATA_COL(rm, i))
-		    != 0) {
-			ret++;
+	for (r = 0; r < rm->rm_nrows; r++) {
+		raidz_row_t *rr = rm->rm_row[r];
+		raidz_row_t *rrg = opts->rm_golden->rm_row[r];
+		dcols = opts->rm_golden->rm_row[0]->rr_cols -
+		    raidz_parity(opts->rm_golden);
+		for (i = 0; i < dcols; i++) {
+			if (DATA_COL_SIZE(rrg, i) == 0) {
+				VERIFY0(DATA_COL_SIZE(rr, i));
+				continue;
+			}
 
-			LOG_OPT(D_DEBUG, opts,
-			    "\nData block [%d] different!\n", i);
+			if (abd_cmp(DATA_COL(rrg, i),
+			    DATA_COL(rr, i)) != 0) {
+				ret++;
+
+				LOG_OPT(D_DEBUG, opts,
+				    "\nData block [%d] different!\n", i);
+			}
 		}
 	}
 	return (ret);
@@ -224,24 +265,21 @@ cmp_data(raidz_test_opts_t *opts, raidz_map_t *rm)
 static int
 init_rand(void *data, size_t size, void *private)
 {
-	int i;
-	int *dst = (int *)data;
-
-	for (i = 0; i < size / sizeof (int); i++)
-		dst[i] = rand_data[i];
-
+	(void) private;
+	memcpy(data, rand_data, size);
 	return (0);
 }
 
 static void
 corrupt_colums(raidz_map_t *rm, const int *tgts, const int cnt)
 {
-	int i;
-	raidz_col_t *col;
-
-	for (i = 0; i < cnt; i++) {
-		col = &rm->rm_col[tgts[i]];
-		abd_iterate_func(col->rc_abd, 0, col->rc_size, init_rand, NULL);
+	for (int r = 0; r < rm->rm_nrows; r++) {
+		raidz_row_t *rr = rm->rm_row[r];
+		for (int i = 0; i < cnt; i++) {
+			raidz_col_t *col = &rr->rr_col[tgts[i]];
+			abd_iterate_func(col->rc_abd, 0, col->rc_size,
+			    init_rand, NULL);
+		}
 	}
 }
 
@@ -288,10 +326,20 @@ init_raidz_golden_map(raidz_test_opts_t *opts, const int parity)
 
 	VERIFY0(vdev_raidz_impl_set("original"));
 
-	opts->rm_golden = vdev_raidz_map_alloc(opts->zio_golden,
-	    opts->rto_ashift, total_ncols, parity);
-	rm_test = vdev_raidz_map_alloc(zio_test,
-	    opts->rto_ashift, total_ncols, parity);
+	if (opts->rto_expand) {
+		opts->rm_golden =
+		    vdev_raidz_map_alloc_expanded(opts->zio_golden,
+		    opts->rto_ashift, total_ncols+1, total_ncols,
+		    parity, opts->rto_expand_offset, 0, B_FALSE);
+		rm_test = vdev_raidz_map_alloc_expanded(zio_test,
+		    opts->rto_ashift, total_ncols+1, total_ncols,
+		    parity, opts->rto_expand_offset, 0, B_FALSE);
+	} else {
+		opts->rm_golden = vdev_raidz_map_alloc(opts->zio_golden,
+		    opts->rto_ashift, total_ncols, parity);
+		rm_test = vdev_raidz_map_alloc(zio_test,
+		    opts->rto_ashift, total_ncols, parity);
+	}
 
 	VERIFY(opts->zio_golden);
 	VERIFY(opts->rm_golden);
@@ -330,8 +378,14 @@ init_raidz_map(raidz_test_opts_t *opts, zio_t **zio, const int parity)
 	(*zio)->io_abd = raidz_alloc(alloc_dsize);
 	init_zio_abd(*zio);
 
-	rm = vdev_raidz_map_alloc(*zio, opts->rto_ashift,
-	    total_ncols, parity);
+	if (opts->rto_expand) {
+		rm = vdev_raidz_map_alloc_expanded(*zio,
+		    opts->rto_ashift, total_ncols+1, total_ncols,
+		    parity, opts->rto_expand_offset, 0, B_FALSE);
+	} else {
+		rm = vdev_raidz_map_alloc(*zio, opts->rto_ashift,
+		    total_ncols, parity);
+	}
 	VERIFY(rm);
 
 	/* Make sure code columns are destroyed */
@@ -420,7 +474,7 @@ run_rec_check_impl(raidz_test_opts_t *opts, raidz_map_t *rm, const int fn)
 	if (fn < RAIDZ_REC_PQ) {
 		/* can reconstruct 1 failed data disk */
 		for (x0 = 0; x0 < opts->rto_dcols; x0++) {
-			if (x0 >= rm->rm_cols - raidz_parity(rm))
+			if (x0 >= rm->rm_row[0]->rr_cols - raidz_parity(rm))
 				continue;
 
 			/* Check if should stop */
@@ -445,10 +499,11 @@ run_rec_check_impl(raidz_test_opts_t *opts, raidz_map_t *rm, const int fn)
 	} else if (fn < RAIDZ_REC_PQR) {
 		/* can reconstruct 2 failed data disk */
 		for (x0 = 0; x0 < opts->rto_dcols; x0++) {
-			if (x0 >= rm->rm_cols - raidz_parity(rm))
+			if (x0 >= rm->rm_row[0]->rr_cols - raidz_parity(rm))
 				continue;
 			for (x1 = x0 + 1; x1 < opts->rto_dcols; x1++) {
-				if (x1 >= rm->rm_cols - raidz_parity(rm))
+				if (x1 >= rm->rm_row[0]->rr_cols -
+				    raidz_parity(rm))
 					continue;
 
 				/* Check if should stop */
@@ -475,14 +530,15 @@ run_rec_check_impl(raidz_test_opts_t *opts, raidz_map_t *rm, const int fn)
 	} else {
 		/* can reconstruct 3 failed data disk */
 		for (x0 = 0; x0 < opts->rto_dcols; x0++) {
-			if (x0 >= rm->rm_cols - raidz_parity(rm))
+			if (x0 >= rm->rm_row[0]->rr_cols - raidz_parity(rm))
 				continue;
 			for (x1 = x0 + 1; x1 < opts->rto_dcols; x1++) {
-				if (x1 >= rm->rm_cols - raidz_parity(rm))
+				if (x1 >= rm->rm_row[0]->rr_cols -
+				    raidz_parity(rm))
 					continue;
 				for (x2 = x1 + 1; x2 < opts->rto_dcols; x2++) {
-					if (x2 >=
-					    rm->rm_cols - raidz_parity(rm))
+					if (x2 >= rm->rm_row[0]->rr_cols -
+					    raidz_parity(rm))
 						continue;
 
 					/* Check if should stop */
@@ -598,7 +654,7 @@ static kcondvar_t sem_cv;
 static int max_free_slots;
 static int free_slots;
 
-static void
+static __attribute__((noreturn)) void
 sweep_thread(void *arg)
 {
 	int err = 0;
@@ -698,8 +754,10 @@ run_sweep(void)
 		opts = umem_zalloc(sizeof (raidz_test_opts_t), UMEM_NOFAIL);
 		opts->rto_ashift = ashift_v[a];
 		opts->rto_dcols = dcols_v[d];
-		opts->rto_offset = (1 << ashift_v[a]) * rand();
+		opts->rto_offset = (1ULL << ashift_v[a]) * rand();
 		opts->rto_dsize = size_v[s];
+		opts->rto_expand = rto_opts.rto_expand;
+		opts->rto_expand_offset = rto_opts.rto_expand_offset;
 		opts->rto_v = 0; /* be quiet */
 
 		VERIFY3P(thread_create(NULL, 0, sweep_thread, (void *) opts,
@@ -732,6 +790,7 @@ exit:
 	return (sweep_state == SWEEP_ERROR ? SWEEP_ERROR : 0);
 }
 
+
 int
 main(int argc, char **argv)
 {
@@ -739,8 +798,8 @@ main(int argc, char **argv)
 	struct sigaction action;
 	int err = 0;
 
-	/* init gdb string early */
-	(void) sprintf(gdb, gdb_tmpl, getpid());
+	/* init gdb pid string early */
+	(void) sprintf(pid_s, "%d", getpid());
 
 	action.sa_handler = sig_handler;
 	sigemptyset(&action.sa_mask);
@@ -757,7 +816,7 @@ main(int argc, char **argv)
 
 	process_options(argc, argv);
 
-	kernel_init(FREAD);
+	kernel_init(SPA_MODE_READ);
 
 	/* setup random data because rand() is not reentrant */
 	rand_data = (int *)umem_alloc(SPA_MAXBLOCKSIZE, UMEM_NOFAIL);

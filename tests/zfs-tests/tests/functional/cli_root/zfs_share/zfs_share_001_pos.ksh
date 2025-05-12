@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -7,7 +8,7 @@
 # You may not use this file except in compliance with the License.
 #
 # You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
+# or https://opensource.org/licenses/CDDL-1.0.
 # See the License for the specific language governing permissions
 # and limitations under the License.
 #
@@ -26,7 +27,7 @@
 #
 
 #
-# Copyright (c) 2016 by Delphix. All rights reserved.
+# Copyright (c) 2016, 2020 by Delphix. All rights reserved.
 #
 
 . $STF_SUITE/include/libtest.shlib
@@ -66,11 +67,12 @@ function cleanup
 	fi
 
 	datasetexists $TESTPOOL/$TESTFS-clone && \
-		log_must zfs destroy -f $TESTPOOL/$TESTFS-clone
+		destroy_dataset $TESTPOOL/$TESTFS-clone -f
 
-	if snapexists "$TESTPOOL/$TESTFS@snapshot"; then
-		log_must zfs destroy -f $TESTPOOL/$TESTFS@snapshot
-	fi
+	snapexists "$TESTPOOL/$TESTFS@snapshot" && \
+		destroy_dataset $TESTPOOL/$TESTFS@snapshot -f
+
+	log_must zfs share -a
 }
 
 
@@ -138,10 +140,19 @@ done
 #
 log_must zfs share -a
 
+#
+# We need to unset __ZFS_POOL_EXCLUDE so that we include all file systems
+# in the os-specific zfs exports file. This will be reset by the next test.
+#
+unset __ZFS_POOL_EXCLUDE
+
 i=0
 while (( i < ${#fs[*]} )); do
 	is_shared ${fs[i]} || \
 	    log_fail "File system ${fs[i]} is not shared (share -a)"
+
+	is_exported ${fs[i]} || \
+	    log_fail "File system ${fs[i]} is not exported (share -a)"
 
 	((i = i + 2))
 done

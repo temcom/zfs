@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: CDDL-1.0
 /*
  * CDDL HEADER START
  *
@@ -6,7 +7,7 @@
  * You may not use this file except in compliance with the License.
  *
  * You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
- * or http://www.opensolaris.org/os/licensing.
+ * or https://opensource.org/licenses/CDDL-1.0.
  * See the License for the specific language governing permissions
  * and limitations under the License.
  *
@@ -54,8 +55,6 @@ extern "C" {
  */
 typedef struct pathname {
 	char	*pn_buf;		/* underlying storage */
-	char	*pn_path;		/* remaining pathname */
-	size_t	pn_pathlen;		/* remaining length */
 	size_t	pn_bufsize;		/* total size of pn_buf */
 } pathname_t;
 

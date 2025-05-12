@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: CDDL-1.0
 /*
  * CDDL HEADER START
  *
@@ -29,8 +30,13 @@ extern "C" {
 
 #define	MMP_MIN_INTERVAL		100	/* ms */
 #define	MMP_DEFAULT_INTERVAL		1000	/* ms */
-#define	MMP_DEFAULT_IMPORT_INTERVALS	10
-#define	MMP_DEFAULT_FAIL_INTERVALS	5
+#define	MMP_DEFAULT_IMPORT_INTERVALS	20
+#define	MMP_DEFAULT_FAIL_INTERVALS	10
+#define	MMP_MIN_FAIL_INTERVALS		2	/* min if != 0 */
+#define	MMP_IMPORT_SAFETY_FACTOR	200	/* pct */
+#define	MMP_INTERVAL_OK(interval)	MAX(interval, MMP_MIN_INTERVAL)
+#define	MMP_FAIL_INTVS_OK(fails)	(fails == 0 ? 0 : MAX(fails, \
+					    MMP_MIN_FAIL_INTERVALS))
 
 typedef struct mmp_thread {
 	kmutex_t	mmp_thread_lock; /* protect thread mgmt fields */
@@ -44,6 +50,9 @@ typedef struct mmp_thread {
 	zio_t		*mmp_zio_root;	/* root of mmp write zios */
 	uint64_t	mmp_kstat_id;	/* unique id for next MMP write kstat */
 	int		mmp_skip_error; /* reason for last skipped write */
+	vdev_t		*mmp_last_leaf;	/* last mmp write sent here */
+	uint64_t	mmp_leaf_last_gen;	/* last mmp write sent here */
+	uint32_t	mmp_seq;	/* intra-second update counter */
 } mmp_thread_t;
 
 
@@ -55,7 +64,8 @@ extern void mmp_update_uberblock(struct spa *spa, struct uberblock *ub);
 extern void mmp_signal_all_threads(void);
 
 /* Global tuning */
-extern ulong_t zfs_multihost_interval;
+extern int param_set_multihost_interval(ZFS_MODULE_PARAM_ARGS);
+extern uint64_t zfs_multihost_interval;
 extern uint_t zfs_multihost_fail_intervals;
 extern uint_t zfs_multihost_import_intervals;
 

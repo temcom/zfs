@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 
 #
 # This file and its contents are supplied under the terms of the
@@ -69,6 +70,8 @@ test_add_vdevs "mirror $VDEV0 $VDEV1" "mirror $VDEV2 $VDEV3" \
     "mirror $VDEV0 $VDEV1 mirror $VDEV2 $VDEV3"
 test_add_vdevs "$VDEV0" "raidz $VDEV1 $VDEV2 $VDEV3" \
     "$VDEV0 raidz $VDEV1 $VDEV2 $VDEV3"
+test_add_vdevs "$VDEV0" "draid $VDEV1 $VDEV2 $VDEV3" \
+    "$VDEV0 draid $VDEV1 $VDEV2 $VDEV3"
 test_add_vdevs "$VDEV0" "log $VDEV1" "$VDEV0 log $VDEV1"
 test_add_vdevs "$VDEV0 log $VDEV1" "$VDEV2" "$VDEV0 $VDEV2 log $VDEV1"
 test_add_vdevs "$VDEV0" "$VDEV1 log $VDEV2" "$VDEV0 $VDEV1 log $VDEV2"

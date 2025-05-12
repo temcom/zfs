@@ -1,23 +1,39 @@
-initrddir = $(datarootdir)/initramfs-tools
+i_tdir = /usr/share/initramfs-tools
+dist_i_t_SCRIPTS = \
+	%D%/zfsunlock
 
-initrd_SCRIPTS = \
-	conf.d/zfs conf-hooks.d/zfs hooks/zfs scripts/zfs scripts/local-top/zfs
 
-SUBDIRS = hooks scripts
+i_t_confhooks_ddir = $(i_tdir)/conf-hooks.d
+dist_i_t_confhooks_d_DATA = \
+	%D%/conf-hooks.d/zfs
 
-EXTRA_DIST = \
-	$(top_srcdir)/contrib/initramfs/conf.d/zfs \
-	$(top_srcdir)/contrib/initramfs/conf-hooks.d/zfs \
-	$(top_srcdir)/contrib/initramfs/README.initramfs.markdown
 
-install-initrdSCRIPTS: $(EXTRA_DIST)
-	for d in conf.d conf-hooks.d hooks scripts scripts/local-top; do \
-	  $(MKDIR_P) $(DESTDIR)$(initrddir)/$$d; \
-	  cp $(top_srcdir)/contrib/initramfs/$$d/zfs \
-	    $(DESTDIR)$(initrddir)/$$d/; \
-	done
-	if [ -f etc/init.d/zfs ]; then \
-	  $(MKDIR_P) $(DESTDIR)$(DEFAULT_INITCONF_DIR); \
-	  cp $(top_srcdir)/etc/init.d/zfs \
-	    $(DESTDIR)$(DEFAULT_INITCONF_DIR)/; \
-	fi
+i_t_conf_ddir = $(i_tdir)/conf.d
+dist_i_t_conf_d_DATA = \
+	%D%/conf.d/zfs
+
+
+i_t_hooksdir = $(i_tdir)/hooks
+i_t_hooks_SCRIPTS = \
+	%D%/hooks/zfs \
+	%D%/hooks/zfsunlock
+
+SUBSTFILES += $(i_t_hooks_SCRIPTS)
+
+
+i_t_scriptsdir = $(i_tdir)/scripts
+dist_i_t_scripts_SCRIPTS = \
+	%D%/scripts/zfs
+
+
+i_t_scripts_localtopdir = $(i_t_scriptsdir)/local-top
+dist_i_t_scripts_localtop_SCRIPTS = \
+	%D%/scripts/local-top/zfs
+
+
+i_t_check_scripts    = $(dist_i_t_SCRIPTS) $(i_t_hooks_SCRIPTS) $(dist_i_t_scripts_SCRIPTS) $(dist_i_t_scripts_localtop_SCRIPTS)
+SHELLCHECKSCRIPTS   += $(i_t_check_scripts)
+$(call SHELLCHECK_OPTS,$(i_t_check_scripts)): SHELLCHECK_SHELL = sh
+
+
+dist_noinst_DATA += %D%/README.md

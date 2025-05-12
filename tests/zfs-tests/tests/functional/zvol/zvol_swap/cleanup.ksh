@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -7,7 +8,7 @@
 # You may not use this file except in compliance with the License.
 #
 # You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
+# or https://opensource.org/licenses/CDDL-1.0.
 # See the License for the specific language governing permissions
 # and limitations under the License.
 #
@@ -37,6 +38,8 @@ verify_runnable "global"
 
 if is_linux; then
 	log_must swapon -a
+elif is_freebsd; then
+	swapon -a || true
 else
 	log_must swapadd
 fi
@@ -44,13 +47,13 @@ fi
 for swapdev in $SAVESWAPDEVS
 do
 	if ! is_swap_inuse $swapdev ; then
-		log_must swap_setup $swapdev >/dev/null 2>&1
+		swap_setup $swapdev
 	fi
 done
 
 voldev=${ZVOL_DEVDIR}/$TESTPOOL/$TESTVOL
 if is_swap_inuse $voldev ; then
-	log_must swap_cleanup $voldev
+	swap_cleanup $voldev
 fi
 
 default_zvol_cleanup

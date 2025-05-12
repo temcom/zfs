@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: CDDL-1.0
 /*
  * CDDL HEADER START
  *
@@ -6,7 +7,7 @@
  * You may not use this file except in compliance with the License.
  *
  * You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
- * or http://www.opensolaris.org/os/licensing.
+ * or https://opensource.org/licenses/CDDL-1.0.
  * See the License for the specific language governing permissions
  * and limitations under the License.
  *
@@ -28,6 +29,7 @@
 #include <signal.h>
 #include <errno.h>
 #include <assert.h>
+#include <limits.h>
 #include "thread_pool_impl.h"
 
 static pthread_mutex_t thread_pool_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -108,8 +110,7 @@ job_cleanup(void *arg)
 	tpool_active_t **activepp;
 
 	pthread_mutex_lock(&tpool->tp_mutex);
-	/* CSTYLED */
-	for (activepp = &tpool->tp_active;; activepp = &activep->tpa_next) {
+	for (activepp = &tpool->tp_active; ; activepp = &activep->tpa_next) {
 		activep = *activepp;
 		if (activep->tpa_tid == my_tid) {
 			*activepp = activep->tpa_next;
@@ -134,7 +135,7 @@ tpool_worker(void *arg)
 
 	/*
 	 * This is the worker's main loop.
-	 * It will only be left if a timeout or an error has occured.
+	 * It will only be left if a timeout or an error has occurred.
 	 */
 	active.tpa_tid = pthread_self();
 	for (;;) {
@@ -423,20 +424,32 @@ tpool_dispatch(tpool_t *tpool, void (*func)(void *), void *arg)
 
 	pthread_mutex_lock(&tpool->tp_mutex);
 
+	if (!(tpool->tp_flags & TP_SUSPEND)) {
+		if (tpool->tp_idle > 0)
+			(void) pthread_cond_signal(&tpool->tp_workcv);
+		else if (tpool->tp_current >= tpool->tp_maximum) {
+			/* At worker limit.  Leave task on queue */
+		} else {
+			if (create_worker(tpool) == 0) {
+				/* Started a new worker thread */
+				tpool->tp_current++;
+			} else if (tpool->tp_current > 0) {
+				/* Leave task on queue */
+			} else {
+				/* Cannot start a single worker! */
+				pthread_mutex_unlock(&tpool->tp_mutex);
+				free(job);
+				return (-1);
+			}
+		}
+	}
+
 	if (tpool->tp_head == NULL)
 		tpool->tp_head = job;
 	else
 		tpool->tp_tail->tpj_next = job;
 	tpool->tp_tail = job;
 	tpool->tp_njobs++;
-
-	if (!(tpool->tp_flags & TP_SUSPEND)) {
-		if (tpool->tp_idle > 0)
-			(void) pthread_cond_signal(&tpool->tp_workcv);
-		else if (tpool->tp_current < tpool->tp_maximum &&
-		    create_worker(tpool) == 0)
-			tpool->tp_current++;
-	}
 
 	pthread_mutex_unlock(&tpool->tp_mutex);
 	return (0);
@@ -596,57 +609,4 @@ tpool_member(tpool_t *tpool)
 	}
 	pthread_mutex_unlock(&tpool->tp_mutex);
 	return (0);
-}
-
-void
-postfork1_child_tpool(void)
-{
-	pthread_t my_tid = pthread_self();
-	tpool_t *tpool;
-	tpool_job_t *job;
-
-	/*
-	 * All of the thread pool workers are gone, except possibly
-	 * for the current thread, if it is a thread pool worker thread.
-	 * Retain the thread pools, but make them all empty.  Whatever
-	 * jobs were queued or running belong to the parent process.
-	 */
-top:
-	if ((tpool = thread_pools) == NULL)
-		return;
-
-	do {
-		tpool_active_t *activep;
-
-		(void) pthread_mutex_init(&tpool->tp_mutex, NULL);
-		(void) pthread_cond_init(&tpool->tp_busycv, NULL);
-		(void) pthread_cond_init(&tpool->tp_workcv, NULL);
-		(void) pthread_cond_init(&tpool->tp_waitcv, NULL);
-		for (job = tpool->tp_head; job; job = tpool->tp_head) {
-			tpool->tp_head = job->tpj_next;
-			free(job);
-		}
-		tpool->tp_tail = NULL;
-		tpool->tp_njobs = 0;
-		for (activep = tpool->tp_active; activep;
-		    activep = activep->tpa_next) {
-			if (activep->tpa_tid == my_tid) {
-				activep->tpa_next = NULL;
-				break;
-			}
-		}
-		tpool->tp_idle = 0;
-		tpool->tp_current = 0;
-		if ((tpool->tp_active = activep) != NULL)
-			tpool->tp_current = 1;
-		tpool->tp_flags &= ~TP_WAIT;
-		if (tpool->tp_flags & (TP_DESTROY | TP_ABANDON)) {
-			tpool->tp_flags &= ~TP_DESTROY;
-			tpool->tp_flags |= TP_ABANDON;
-			if (tpool->tp_current == 0) {
-				delete_pool(tpool);
-				goto top;	/* start over */
-			}
-		}
-	} while ((tpool = tpool->tp_forw) != thread_pools);
 }

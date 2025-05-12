@@ -1,4 +1,4 @@
-/* BEGIN CSTYLED */
+// SPDX-License-Identifier: MIT
 /*
 ** $Id: ldo.c,v 2.108.1.3 2013/11/08 18:22:50 roberto Exp $
 ** Stack and Call structure of Lua
@@ -10,6 +10,7 @@
 #define LUA_CORE
 
 #include <sys/lua/lua.h>
+#include <sys/asm_linkage.h>
 
 #include "lapi.h"
 #include "ldebug.h"
@@ -28,7 +29,26 @@
 #include "lzio.h"
 
 
-
+/* Return the number of bytes available on the stack. */
+#if defined (_KERNEL) && defined(__linux__)
+#include <asm/current.h>
+static intptr_t stack_remaining(void) {
+  intptr_t local;
+  local = (intptr_t)&local - (intptr_t)current->stack;
+  return local;
+}
+#elif defined (_KERNEL) && defined(__FreeBSD__)
+#include <sys/pcpu.h>
+static intptr_t stack_remaining(void) {
+  intptr_t local;
+  local = (intptr_t)&local - (intptr_t)curthread->td_kstack;
+  return local;
+}
+#else
+static intptr_t stack_remaining(void) {
+  return INTPTR_MAX;
+}
+#endif
 
 /*
 ** {======================================================
@@ -46,6 +66,7 @@
 
 #ifdef _KERNEL
 
+#ifdef __linux__
 #if defined(__i386__)
 #define	JMP_BUF_CNT	6
 #elif defined(__x86_64__)
@@ -61,21 +82,25 @@
 #elif defined(__mips__)
 #define JMP_BUF_CNT	12
 #elif defined(__s390x__)
-#define JMP_BUF_CNT	9
+#define JMP_BUF_CNT	18
+#elif defined(__riscv)
+#define JMP_BUF_CNT     64
+#elif defined(__loongarch_lp64)
+#define JMP_BUF_CNT     64
 #else
 #define	JMP_BUF_CNT	1
 #endif
 
 typedef	struct _label_t { long long unsigned val[JMP_BUF_CNT]; } label_t;
 
-int setjmp(label_t *) __attribute__ ((__nothrow__));
-extern void longjmp(label_t *) __attribute__((__noreturn__));
+int ASMABI setjmp(label_t *) __attribute__ ((__nothrow__));
+extern __attribute__((noreturn)) void ASMABI longjmp(label_t *);
 
 #define LUAI_THROW(L,c)		longjmp(&(c)->b)
 #define LUAI_TRY(L,c,a)		if (setjmp(&(c)->b) == 0) { a }
 #define luai_jmpbuf		label_t
 
-/* unsupported archs will build but not be able to run lua programs */
+/* unsupported arches will build but not be able to run lua programs */
 #if JMP_BUF_CNT == 1
 int setjmp (label_t *buf) {
 	return 1;
@@ -84,6 +109,11 @@ int setjmp (label_t *buf) {
 void longjmp (label_t * buf) {
 	for (;;);
 }
+#endif
+#else
+#define LUAI_THROW(L,c)		longjmp((c)->b, 1)
+#define LUAI_TRY(L,c,a)		if (setjmp((c)->b) == 0) { a }
+#define luai_jmpbuf		jmp_buf
 #endif
 
 #else /* _KERNEL */
@@ -140,6 +170,14 @@ static void seterrorobj (lua_State *L, int errcode, StkId oldtop) {
   L->top = oldtop + 1;
 }
 
+/*
+ * Silence infinite recursion warning which was added to -Wall in gcc 12.1
+ */
+#if defined(__GNUC__) && !defined(__clang__) && \
+	defined(HAVE_KERNEL_INFINITE_RECURSION)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Winfinite-recursion"
+#endif
 
 l_noret luaD_throw (lua_State *L, int errcode) {
   if (L->errorJmp) {  /* thread has an error handler? */
@@ -161,6 +199,11 @@ l_noret luaD_throw (lua_State *L, int errcode) {
     }
   }
 }
+
+#if defined(__GNUC__) && !defined(__clang__) && \
+	defined(HAVE_INFINITE_RECURSION)
+#pragma GCC diagnostic pop
+#endif
 
 
 int luaD_rawrunprotected (lua_State *L, Pfunc f, void *ud) {
@@ -367,7 +410,7 @@ int luaD_precall (lua_State *L, StkId func, int nresults) {
       StkId base;
       Proto *p = clLvalue(func)->p;
       n = cast_int(L->top - func) - 1;  /* number of real arguments */
-      luaD_checkstack(L, p->maxstacksize);
+      luaD_checkstack(L, p->maxstacksize + p->numparams);
       for (; n < p->numparams; n++)
         setnilvalue(L->top++);  /* complete missing arguments */
       if (!p->is_vararg) {
@@ -414,7 +457,7 @@ int luaD_poscall (lua_State *L, StkId firstResult) {
   }
   res = ci->func;  /* res == final position of 1st result */
   wanted = ci->nresults;
-  L->ci = ci = ci->previous;  /* back to caller */
+  L->ci = ci->previous;  /* back to caller */
   /* move results to correct place */
   for (i = wanted; i != 0 && firstResult < L->top; i--)
     setobjs2s(L, res++, firstResult++);
@@ -436,8 +479,13 @@ void luaD_call (lua_State *L, StkId func, int nResults, int allowyield) {
     if (L->nCcalls == LUAI_MAXCCALLS)
       luaG_runerror(L, "C stack overflow");
     else if (L->nCcalls >= (LUAI_MAXCCALLS + (LUAI_MAXCCALLS>>3)))
-      luaD_throw(L, LUA_ERRERR);  /* error while handing stack error */
+      luaD_throw(L, LUA_ERRERR);  /* error while handling stack error */
   }
+  intptr_t remaining = stack_remaining();
+  if (L->runerror == 0 && remaining < LUAI_MINCSTACK)
+    luaG_runerror(L, "C stack overflow");
+  if (L->runerror != 0 && remaining < LUAI_MINCSTACK / 2)
+    luaD_throw(L, LUA_ERRERR);  /* error while handling stack error */
   if (!allowyield) L->nny++;
   if (!luaD_precall(L, func, nResults))  /* is a Lua function? */
     luaV_execute(L);  /* call it */
@@ -713,4 +761,3 @@ int luaD_protectedparser (lua_State *L, ZIO *z, const char *name,
   L->nny--;
   return status;
 }
-/* END CSTYLED */

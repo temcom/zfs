@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: CDDL-1.0
 /*
  * CDDL HEADER START
  *
@@ -6,7 +7,7 @@
  * You may not use this file except in compliance with the License.
  *
  * You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
- * or http://www.opensolaris.org/os/licensing.
+ * or https://opensource.org/licenses/CDDL-1.0.
  * See the License for the specific language governing permissions
  * and limitations under the License.
  *
@@ -37,13 +38,15 @@ struct dsl_pool;
 
 typedef int (dsl_checkfunc_t)(void *, dmu_tx_t *);
 typedef void (dsl_syncfunc_t)(void *, dmu_tx_t *);
+typedef void (dsl_sigfunc_t)(void *, dmu_tx_t *);
 
 typedef enum zfs_space_check {
 	/*
-	 * Normal space check: if there is less than 3.2% free space,
-	 * the operation will fail.  Operations which are logically
-	 * creating things should use this (e.g. "zfs create", "zfs snapshot").
-	 * User writes (via the ZPL / ZVOL) also fail at this point.
+	 * Normal space check: if there is less than 3.2% free space (bounded
+	 * by spa_max_slop), the operation will fail.  Operations which are
+	 * logically creating things should use this (e.g. "zfs create", "zfs
+	 * snapshot").  User writes (via the ZPL / ZVOL) also fail at this
+	 * point.
 	 */
 	ZFS_SPACE_CHECK_NORMAL,
 
@@ -111,11 +114,13 @@ void dsl_sync_task_sync(dsl_sync_task_t *, dmu_tx_t *);
 int dsl_sync_task(const char *, dsl_checkfunc_t *,
     dsl_syncfunc_t *, void *, int, zfs_space_check_t);
 void dsl_sync_task_nowait(struct dsl_pool *, dsl_syncfunc_t *,
-    void *, int, zfs_space_check_t, dmu_tx_t *);
+    void *, dmu_tx_t *);
 int dsl_early_sync_task(const char *, dsl_checkfunc_t *,
     dsl_syncfunc_t *, void *, int, zfs_space_check_t);
 void dsl_early_sync_task_nowait(struct dsl_pool *, dsl_syncfunc_t *,
-    void *, int, zfs_space_check_t, dmu_tx_t *);
+    void *, dmu_tx_t *);
+int dsl_sync_task_sig(const char *, dsl_checkfunc_t *, dsl_syncfunc_t *,
+    dsl_sigfunc_t *, void *, int, zfs_space_check_t);
 
 #ifdef	__cplusplus
 }

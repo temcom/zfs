@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: CDDL-1.0
 /*
  * CDDL HEADER START
  *
@@ -33,8 +34,8 @@ extern "C" {
 
 #define	ZCP_RUN_INFO_KEY "runinfo"
 
-extern unsigned long zfs_lua_max_instrlimit;
-extern unsigned long zfs_lua_max_memlimit;
+extern uint64_t zfs_lua_max_instrlimit;
+extern uint64_t zfs_lua_max_memlimit;
 
 int zcp_argerror(lua_State *, int, const char *, ...);
 
@@ -51,6 +52,12 @@ typedef struct zcp_cleanup_handler {
 	void *zch_cleanup_arg;
 	list_node_t zch_node;
 } zcp_cleanup_handler_t;
+
+typedef struct zcp_alloc_arg {
+	boolean_t	aa_must_succeed;
+	int64_t		aa_alloc_remaining;
+	int64_t		aa_alloc_limit;
+} zcp_alloc_arg_t;
 
 typedef struct zcp_run_info {
 	dsl_pool_t	*zri_pool;
@@ -94,6 +101,11 @@ typedef struct zcp_run_info {
 	boolean_t	zri_timed_out;
 
 	/*
+	 * Channel program was canceled by user
+	 */
+	boolean_t	zri_canceled;
+
+	/*
 	 * Boolean indicating whether or not we are running in syncing
 	 * context.
 	 */
@@ -104,6 +116,34 @@ typedef struct zcp_run_info {
 	 * triggered in the event of a fatal error.
 	 */
 	list_t		zri_cleanup_handlers;
+
+	/*
+	 * The Lua state context of our channel program.
+	 */
+	lua_State	*zri_state;
+
+	/*
+	 * Lua memory allocator arguments.
+	 */
+	zcp_alloc_arg_t	*zri_allocargs;
+
+	/*
+	 * Contains output values from zcp script or error string.
+	 */
+	nvlist_t	*zri_outnvl;
+
+	/*
+	 * The keys of this nvlist are datasets which may be zvols and may need
+	 * to have device minor nodes created.  This information is passed from
+	 * syncing context (where the zvol is created) to open context (where we
+	 * create the minor nodes).
+	 */
+	nvlist_t	*zri_new_zvols;
+
+	/*
+	 * The errno number returned to caller of zcp_eval().
+	 */
+	int		zri_result;
 } zcp_run_info_t;
 
 zcp_run_info_t *zcp_run_info(lua_State *);
@@ -118,7 +158,7 @@ typedef struct zcp_arg {
 	/*
 	 * The name of this argument. For keyword arguments this is the name
 	 * functions will use to set the argument. For positional arguments
-	 * the name has no programatic meaning, but will appear in error
+	 * the name has no programmatic meaning, but will appear in error
 	 * messages and help output.
 	 */
 	const char *za_name;
@@ -137,7 +177,7 @@ void zcp_parse_args(lua_State *, const char *, const zcp_arg_t *,
 int zcp_nvlist_to_lua(lua_State *, nvlist_t *, char *, int);
 int zcp_dataset_hold_error(lua_State *, dsl_pool_t *, const char *, int);
 struct dsl_dataset *zcp_dataset_hold(lua_State *, dsl_pool_t *,
-    const char *, void *);
+    const char *, const void *);
 
 typedef int (zcp_lib_func_t)(lua_State *);
 typedef struct zcp_lib_info {

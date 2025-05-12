@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -7,7 +8,7 @@
 # You may not use this file except in compliance with the License.
 #
 # You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
+# or https://opensource.org/licenses/CDDL-1.0.
 # See the License for the specific language governing permissions
 # and limitations under the License.
 #
@@ -50,19 +51,18 @@ DISKLIST=$(get_disklist $TESTPOOL)
 
 function cleanup
 {
+	kill $killpid >/dev/null 2>&1
+
 	#
 	# Ensure we don't leave disks in the offline state
 	#
 	for disk in $DISKLIST; do
 		log_must zpool online $TESTPOOL $disk
-		check_state $TESTPOOL $disk "online"
-		if [[ $? != 0 ]]; then
-			log_fail "Unable to online $disk"
-		fi
-
+		log_must check_state $TESTPOOL $disk "online"
 	done
+	sleep 1 # Delay for resilver to start
+	log_must zpool wait -t resilver $TESTPOOL
 
-	kill $killpid >/dev/null 2>&1
 	[[ -e $TESTDIR ]] && log_must rm -rf $TESTDIR/*
 }
 
@@ -90,10 +90,8 @@ while [[ $i -lt ${#disks[*]} ]]; do
 		log_must zpool online $TESTPOOL ${disks[$i]}
 		check_state $TESTPOOL ${disks[$i]} "online" || \
 		    log_fail "Failed to set ${disks[$i]} online"
-		# Delay for resilver to complete
-		while ! is_pool_resilvered $TESTPOOL; do
-			log_must sleep 1
-		done
+		sleep 1 # Delay for resilver to start
+		log_must zpool wait -t resilver $TESTPOOL
 		log_must zpool clear $TESTPOOL
 		while [[ $j -lt ${#disks[*]} ]]; do
 			if [[ $j -eq $i ]]; then
@@ -125,17 +123,16 @@ while [[ $i -lt ${#disks[*]} ]]; do
 		log_must zpool online $TESTPOOL ${disks[$i]}
 		check_state $TESTPOOL ${disks[$i]} "online" || \
 		    log_fail "Failed to set ${disks[$i]} online"
-		# Delay for resilver to complete
-		while ! is_pool_resilvered $TESTPOOL; do
-			log_must sleep 1
-		done
+		sleep 1 # Delay for resilver to start
+		log_must zpool wait -t resilver $TESTPOOL
 		log_must zpool clear $TESTPOOL
 	fi
 	((i++))
 done
 
 log_must kill $killpid
-sync
+sync_all_pools
+log_must sync
 
 typeset dir=$(get_device_dir $DISKS)
 verify_filesys "$TESTPOOL" "$TESTPOOL/$TESTFS" "$dir"

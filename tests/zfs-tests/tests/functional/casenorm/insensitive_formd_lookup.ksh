@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 #
 # This file and its contents are supplied under the terms of the
@@ -19,7 +20,7 @@
 
 # DESCRIPTION:
 # For the filesystem with casesensitivity=insensitive, normalization=formD,
-# check that lookup succeds using any name form.
+# check that lookup succeeds using any name form.
 #
 # STRATEGY:
 # For each c/n name form:

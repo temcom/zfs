@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -7,7 +8,7 @@
 # You may not use this file except in compliance with the License.
 #
 # You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
+# or https://opensource.org/licenses/CDDL-1.0.
 # See the License for the specific language governing permissions
 # and limitations under the License.
 #
@@ -37,8 +38,8 @@
 # 'zfs inherit' should return an error with bad parameters in one command.
 #
 # STRATEGY:
-# 1. Set an array of bad options and invlid properties to 'zfs inherit'
-# 2. Execute 'zfs inherit' with bad options and passing invlid properties
+# 1. Set an array of bad options and invalid properties to 'zfs inherit'
+# 2. Execute 'zfs inherit' with bad options and passing invalid properties
 # 3. Verify an error is returned.
 #
 
@@ -47,9 +48,7 @@ verify_runnable "both"
 function cleanup
 {
 	for ds in $TESTPOOL $TESTPOOL/$TESTFS $TESTPOOL/$TESTVOL ; do
-		if snapexists $ds@$TESTSNAP; then
-			log_must zfs destroy $ds@$TESTSNAP
-		fi
+		snapexists $ds@$TESTSNAP && destroy_dataset $ds@$TESTSNAP
 	done
 	cleanup_user_prop $TESTPOOL
 }

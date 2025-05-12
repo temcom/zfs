@@ -1,16 +1,11 @@
-include $(top_srcdir)/config/Rules.am
+libefi_la_CFLAGS  = $(AM_CFLAGS) $(LIBRARY_CFLAGS)
+libefi_la_CFLAGS += $(LIBUUID_CFLAGS) $(ZLIB_CFLAGS)
+libefi_la_CFLAGS += -fvisibility=hidden
 
-DEFAULT_INCLUDES += \
-	-I$(top_srcdir)/include \
-	-I$(top_srcdir)/lib/libspl/include
+noinst_LTLIBRARIES += libefi.la
+CPPCHECKTARGETS    += libefi.la
 
-noinst_LTLIBRARIES = libefi.la
+libefi_la_SOURCES = \
+	%D%/rdwr_efi.c
 
-USER_C = \
-	rdwr_efi.c
-
-nodist_libefi_la_SOURCES = $(USER_C)
-
-libefi_la_LIBADD = $(LIBUUID)
-
-EXTRA_DIST = $(USER_C)
+libefi_la_LIBADD = $(LIBUUID_LIBS) $(ZLIB_LIBS)

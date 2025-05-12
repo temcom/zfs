@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -7,7 +8,7 @@
 # You may not use this file except in compliance with the License.
 #
 # You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
+# or https://opensource.org/licenses/CDDL-1.0.
 # See the License for the specific language governing permissions
 # and limitations under the License.
 #
@@ -21,14 +22,12 @@
 #
 
 #
-# Copyright 2009 Sun Microsystems, Inc.  All rights reserved.
+# Copyright (c) 2009, Sun Microsystems Inc. All rights reserved.
+# Copyright (c) 2013, 2016, Delphix. All rights reserved.
 # Use is subject to license terms.
 #
 
-#
-# Copyright (c) 2013, 2016 by Delphix. All rights reserved.
-#
-
+. $STF_SUITE/include/properties.shlib
 . $STF_SUITE/tests/functional/rsend/rsend.kshlib
 
 #
@@ -39,57 +38,31 @@
 #	1. Setting properties for all the filesystem and volumes randomly
 #	2. Backup all the data from POOL by send -R
 #	3. Restore all the data in POOL2
-#	4. Verify all the perperties in two pools are same
+#	4. Verify all the properties in the two pools are the same
 #
 
 verify_runnable "global"
-
-function rand_set_prop
-{
-	typeset dtst=$1
-	typeset prop=$2
-	shift 2
-	typeset value=$(random_get $@)
-
-	log_must eval "zfs set $prop='$value' $dtst"
-}
 
 function edited_prop
 {
 	typeset behaviour=$1
 	typeset ds=$2
 	typeset backfile=$TESTDIR/edited_prop_$ds
+	typeset te=0
 
 	case $behaviour in
 		"get")
+			is_te_enabled && te=1
 			typeset props=$(zfs inherit 2>&1 | \
-				awk '$2=="YES" {print $1}' | \
-				egrep -v "^vol|\.\.\.$")
-			for item in $props ; do
-				if [[ $item == "mlslabel" ]] && \
-					! is_te_enabled ; then
-					continue
-				fi
-				zfs get -H -o property,value $item $ds >> \
-					$backfile
-				if (($? != 0)); then
-					log_fail "zfs get -H -o property,value"\
-						"$item $ds > $backfile"
-				fi
-			done
+				awk -v te=$te '$2=="YES" && $1 !~ /^vol|\.\.\.$/ && (te || $1 != "mlslabel") {printf("%s,", $1)}')
+			log_must eval "zfs get -Ho property,value ${props%,} $ds >> $backfile"
 			;;
 		"set")
 			if [[ ! -f $backfile ]] ; then
 				log_fail "$ds need backup properties firstly."
 			fi
 
-			typeset prop value
-			while read prop value ; do
-				eval zfs set $prop='$value' $ds
-				if (($? != 0)); then
-					log_fail "zfs set $prop=$value $ds"
-				fi
-			done < $backfile
+			log_must zfs set $(tr '\t' '=' < $backfile) "$ds"
 			;;
 		*)
 			log_fail "Unrecognized behaviour: $behaviour"
@@ -128,12 +101,10 @@ for fs in "$POOL" "$POOL/pclone" "$POOL/$FS" "$POOL/$FS/fs1" \
 	"$POOL/$FS/fs1/fs2" "$POOL/$FS/fs1/fclone" ; do
 	rand_set_prop $fs aclinherit "discard" "noallow" "secure" "passthrough"
 	rand_set_prop $fs checksum "on" "off" "fletcher2" "fletcher4" "sha256"
-	rand_set_prop $fs acltype "off" "noacl" "posixacl"
+	rand_set_prop $fs acltype "off" "posix" "nfsv4" "noacl" "posixacl"
 	rand_set_prop $fs atime "on" "off"
 	rand_set_prop $fs checksum "on" "off" "fletcher2" "fletcher4" "sha256"
-	rand_set_prop $fs compression "on" "off" "lzjb" "gzip" \
-		"gzip-1" "gzip-2" "gzip-3" "gzip-4" "gzip-5" "gzip-6"   \
-		"gzip-7" "gzip-8" "gzip-9"
+	rand_set_prop $fs compression "${compress_prop_vals[@]}"
 	rand_set_prop $fs copies "1" "2" "3"
 	rand_set_prop $fs devices "on" "off"
 	rand_set_prop $fs exec "on" "off"
@@ -142,15 +113,15 @@ for fs in "$POOL" "$POOL/pclone" "$POOL/$FS" "$POOL/$FS/fs1" \
 	rand_set_prop $fs dnodesize "legacy" "auto" "1k" "2k" "4k" "8k" "16k"
 	rand_set_prop $fs setuid "on" "off"
 	rand_set_prop $fs snapdir "hidden" "visible"
-	rand_set_prop $fs xattr "on" "off"
+	if ! is_freebsd; then
+		rand_set_prop $fs xattr "on" "off"
+	fi
 	rand_set_prop $fs user:prop "aaa" "bbb" "23421" "()-+?"
 done
 
 for vol in "$POOL/vol" "$POOL/$FS/vol" ; do
 	rand_set_prop $vol checksum "on" "off" "fletcher2" "fletcher4" "sha256"
-	rand_set_prop $vol compression "on" "off" "lzjb" "gzip" \
-		"gzip-1" "gzip-2" "gzip-3" "gzip-4" "gzip-5" "gzip-6"   \
-		"gzip-7" "gzip-8" "gzip-9"
+	rand_set_prop $vol compression "${compress_prop_vals[@]}"
 	rand_set_prop $vol readonly "on" "off"
 	rand_set_prop $vol copies "1" "2" "3"
 	rand_set_prop $vol user:prop "aaa" "bbb" "23421" "()-+?"
@@ -181,20 +152,16 @@ set -A pair 	"$POOL" 		"$POOL2" 		\
 
 typeset -i i=0
 while ((i < ${#pair[@]})); do
-	log_must cmp_ds_prop ${pair[$i]} ${pair[((i+1))]}
-
+	log_must cmp_ds_prop ${pair[$i]} ${pair[((i+1))]} nosource
 	((i += 2))
 done
 
 
-zpool upgrade -v | grep "Snapshot properties" > /dev/null 2>&1
-if (( $? == 0 )) ; then
-	i=0
-	while ((i < ${#pair[@]})); do
-		log_must cmp_ds_prop ${pair[$i]}@final ${pair[((i+1))]}@final
-		((i += 2))
-	done
-fi
+i=0
+while ((i < ${#pair[@]})); do
+	log_must cmp_ds_prop ${pair[$i]}@final ${pair[((i+1))]}@final
+	((i += 2))
+done
 
-log_pass "Verify zfs send -R will backup all the filesystem properties " \
+log_pass "Verify zfs send -R will backup all the filesystem properties" \
 	"correctly."

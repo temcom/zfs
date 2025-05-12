@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 
 #
 # CDDL HEADER START
@@ -50,26 +51,30 @@ log_assert "Testing automated auto-spare FMA test"
 
 log_onexit cleanup
 
-# Clear events from previous runs
-zed_events_drain
+# Events not supported on FreeBSD
+if ! is_freebsd; then
+	# Clear events from previous runs
+	zed_events_drain
+fi
 
 TESTFILE="/$TESTPOOL/$TESTFS/testfile"
 
 for type in "mirror" "raidz" "raidz2"; do
 	# 1. Create a pool with hot spares
-	truncate -s $SPA_MINDEVSIZE $VDEV_FILES $SPARE_FILE
-	log_must zpool create -f $TESTPOOL $type $VDEV_FILES spare $SPARE_FILE
+	log_must truncate -s $MINVDEVSIZE $VDEV_FILES $SPARE_FILE
+	log_must zpool create -f $TESTPOOL $type $VDEV_FILES \
+	    spare $SPARE_FILE
 
 	# 2. Create a filesystem with the primary cache disable to force reads
 	log_must zfs create -o primarycache=none $TESTPOOL/$TESTFS
 	log_must zfs set recordsize=16k $TESTPOOL/$TESTFS
 
 	# 3. Write a file to the pool to be read back
-	log_must dd if=/dev/urandom of=$TESTFILE bs=1M count=16
+	log_must dd if=/dev/urandom of=$TESTFILE bs=1M count=64
 
 	# 4. Inject CHECKSUM ERRORS on read with a zinject error handler
 	log_must zinject -d $FAULT_FILE -e corrupt -f 50 -T read $TESTPOOL
-	log_must cp $TESTFILE /dev/null
+	log_must dd if=$TESTFILE of=/dev/null bs=1M count=64
 
 	# 5. Verify the ZED kicks in a hot spare and expected pool/device status
 	log_note "Wait for ZED to auto-spare"

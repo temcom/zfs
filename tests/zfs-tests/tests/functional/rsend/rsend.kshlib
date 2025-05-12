@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -6,7 +7,7 @@
 # You may not use this file except in compliance with the License.
 #
 # You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
+# or https://opensource.org/licenses/CDDL-1.0.
 # See the License for the specific language governing permissions
 # and limitations under the License.
 #
@@ -25,11 +26,13 @@
 #
 
 #
-# Copyright (c) 2013, 2016 by Delphix. All rights reserved.
+# Copyright (c) 2013, 2018 by Delphix. All rights reserved.
+# Copyright (c) 2020 by Datto Inc. All rights reserved.
 #
 
 . $STF_SUITE/include/libtest.shlib
 . $STF_SUITE/include/math.shlib
+. $STF_SUITE/tests/functional/cli_root/zfs_set/zfs_set_common.kshlib
 . $STF_SUITE/tests/functional/rsend/rsend.cfg
 
 #
@@ -119,6 +122,14 @@ function cleanup_pool
 	log_must rm -rf $BACKDIR/*
 
 	if is_global_zone ; then
+		#
+		# Linux: Issuing a `df` seems to properly force any negative
+		# dcache entries to be invalidated preventing failures when
+		# accessing the mount point. Additional investigation required.
+		#
+		# https://github.com/openzfs/zfs/issues/6143
+		#
+		log_must eval "df >/dev/null"
 		log_must_busy zfs destroy -Rf $pool
 	else
 		typeset list=$(zfs list -H -r -t all -o name $pool)
@@ -143,28 +154,6 @@ function cleanup_pool
 	if [[ -d $mntpnt ]]; then
 		rm -rf $mntpnt/*
 	fi
-
-	return 0
-}
-
-function cleanup_pools
-{
-	cleanup_pool $POOL2
-	destroy_pool $POOL3
-}
-
-function cmp_md5s {
-	typeset file1=$1
-	typeset file2=$2
-
-	eval md5sum $file1 | awk '{ print $1 }'	> $BACKDIR/md5_file1
-	eval md5sum $file2 | awk '{ print $1 }'	> $BACKDIR/md5_file2
-	diff $BACKDIR/md5_file1 $BACKDIR/md5_file2
-	typeset -i ret=$?
-
-	rm -f $BACKDIR/md5_file1 $BACKDIR/md5_file2
-
-	return $ret
 }
 
 #
@@ -178,18 +167,9 @@ function cmp_ds_subs
 	typeset src_fs=$1
 	typeset dst_fs=$2
 
-	zfs list -r -H -t all -o name $src_fs > $BACKDIR/src1
-	zfs list -r -H -t all -o name $dst_fs > $BACKDIR/dst1
-
-	eval sed -e 's:^$src_fs:PREFIX:g' < $BACKDIR/src1 > $BACKDIR/src
-	eval sed -e 's:^$dst_fs:PREFIX:g' < $BACKDIR/dst1 > $BACKDIR/dst
-
-	diff $BACKDIR/src $BACKDIR/dst
-	typeset -i ret=$?
-
-	rm -f $BACKDIR/src $BACKDIR/dst $BACKDIR/src1 $BACKDIR/dst1
-
-	return $ret
+	diff \
+		<(zfs list -rHt all -o name $src_fs | sed "s:^$src_fs:PREFIX:g") \
+		<(zfs list -rHt all -o name $dst_fs | sed "s:^$dst_fs:PREFIX:g")
 }
 
 #
@@ -207,8 +187,7 @@ function cmp_ds_cont
 	srcdir=$(get_prop mountpoint $src_fs)
 	dstdir=$(get_prop mountpoint $dst_fs)
 
-	diff -r $srcdir $dstdir > /dev/null 2>&1
-	return $?
+	replay_directory_diff $srcdir $dstdir
 }
 
 #
@@ -216,33 +195,30 @@ function cmp_ds_cont
 #
 # $1 dataset 1
 # $2 dataset 2
+# $3 -n == don't track property source
+# $4 -n == don't track the origin property
 #
 function cmp_ds_prop
 {
 	typeset dtst1=$1
 	typeset dtst2=$2
+	typeset nosource=$3
+	typeset noorigin=$4
+	typeset source=",source"; [ -n "$nosource" ] && source=
+	typeset origin=",origin"; [ -n "$noorigin" ] && origin=
+	typeset props="type$origin,volblocksize,acltype,dnodesize"
+	props+=",atime,canmount,checksum,compression,copies,devices"
+	props+=",exec,quota,readonly,recordsize,reservation,setuid"
+	props+=",snapdir,version,volsize,xattr,mountpoint"
+	if is_freebsd; then
+		props+=",jailed"
+	else
+		props+=",zoned"
+	fi
 
-	for item in "type" "origin" "volblocksize" "acltype" "dnodesize" \
-	    "atime" "canmount" "checksum" "compression" "copies" "devices" \
-	    "exec" "quota" "readonly" "recordsize" "reservation" "setuid" \
-	    "snapdir" "version" "volsize" "xattr" "zoned" "mountpoint";
-	do
-		zfs get -H -o property,value,source $item $dtst1 >> \
-		    $BACKDIR/dtst1
-		zfs get -H -o property,value,source $item $dtst2 >> \
-		    $BACKDIR/dtst2
-	done
-
-	eval sed -e 's:$dtst1:PREFIX:g' < $BACKDIR/dtst1 > $BACKDIR/dtst1
-	eval sed -e 's:$dtst2:PREFIX:g' < $BACKDIR/dtst2 > $BACKDIR/dtst2
-
-	diff $BACKDIR/dtst1 $BACKDIR/dtst2
-	typeset -i ret=$?
-
-	rm -f $BACKDIR/dtst1 $BACKDIR/dtst2
-
-	return $ret
-
+	diff \
+		<(zfs get -Ho property,value$source $props $dtst1 | sed -e "s:$dtst1:PREFIX:g" -e 's/^origin	[^@]*/origin	POOL/' -e 's/	inherited from [^/]*/	inherited from POOL/') \
+		<(zfs get -Ho property,value$source $props $dtst2 | sed -e "s:$dtst2:PREFIX:g" -e 's/^origin	[^@]*/origin	POOL/' -e 's/	inherited from [^/]*/	inherited from POOL/')
 }
 
 #
@@ -284,7 +260,6 @@ function snapshot_tree
 	typeset -i ret=0
 	if [[ $type == "filesystem" ]]; then
 		typeset mntpnt=$(get_prop mountpoint $ds)
-		((ret |= $?))
 
 		if ((ret == 0)) ; then
 			eval random_tree $mntpnt/${snap##$ds}
@@ -336,13 +311,11 @@ function getds_with_suffix
 	typeset ds=$1
 	typeset suffix=$2
 
-	typeset list=$(zfs list -r -H -t all -o name $ds | grep "$suffix$")
-
-	echo $list
+	zfs list -rHt all -o name $ds | grep "$suffix$"
 }
 
 #
-# Output inherited properties whitch is edited for file system
+# Output inherited properties which is edited for file system
 #
 function fs_inherit_prop
 {
@@ -355,8 +328,7 @@ function fs_inherit_prop
 		fi
 	else
 		fs_prop=$(zfs inherit 2>&1 | \
-		    awk '$2=="YES" && $3=="YES" {print $1}'|
-		    egrep -v "devices|mlslabel|sharenfs|sharesmb|zoned")
+		    awk '$2=="YES" && $3=="YES" && !/devices|mlslabel|sharenfs|sharesmb|zoned/ {print $1}')
 	fi
 
 	echo $fs_prop
@@ -367,7 +339,7 @@ function fs_inherit_prop
 #
 function vol_inherit_prop
 {
-	echo "checksum readonly"
+	echo checksum readonly
 }
 
 #
@@ -458,16 +430,137 @@ function rm_files
 }
 
 #
-# Mess up file contents
+# Simulate a random set of operations which could be reasonably expected
+# to occur on an average filesystem.
 #
-# $1 The file path
+# $1 Number of files to modify
+# $2 Maximum file size
+# $3 File system to modify the file on
+# $4 Enabled xattrs (optional)
 #
-function mess_file
+function churn_files
 {
+	nfiles=$1
+	maxsize=$2
+	fs=$3
+	xattrs=${4:-1}
+
+	#
+	# Remove roughly half of the files in order to make it more
+	# likely that a dnode will be reallocated.
+	#
+	for ((i=0; i<$nfiles; i=i+1)); do
+		file_name="/$fs/file-$i"
+
+		if [[ -e $file_name ]]; then
+			if [ $((RANDOM % 2)) -eq 0 ]; then
+				rm $file_name || \
+				    log_fail "Failed to remove $file_name"
+			fi
+		fi
+	done
+
+	#
+	# Remount the filesystem to simulate normal usage.  This resets
+	# the last allocated object id allowing for new objects to be
+	# reallocated in the locations of previously freed objects.
+	#
+	log_must zfs unmount $fs
+	log_must zfs mount $fs
+
+	for i in {0..$nfiles}; do
+		file_name="/$fs/file-$i"
+		file_size=$((($RANDOM * $RANDOM % ($maxsize - 1)) + 1))
+
+		#
+		# When the file exists modify it in one of five ways to
+		# simulate normal usage:
+		# - (20%) Remove and set and extended attribute on the file
+		# - (20%) Overwrite the existing file
+		# - (20%) Truncate the existing file to a random length
+		# - (20%) Truncate the existing file to zero length
+		# - (20%) Remove the file
+		#
+		# Otherwise create the missing file.  20% of the created
+		# files will be small and use embedded block pointers, the
+		# remainder with have random sizes up to the maximum size.
+		# Three extended attributes are attached to all of the files.
+		#
+		if [[ -e $file_name ]]; then
+			value=$((RANDOM % 5))
+			if [ $value -eq 0 -a $xattrs -ne 0 ]; then
+				attrname="testattr$((RANDOM % 3))"
+				attrlen="$(((RANDOM % 1000) + 1))"
+				attrvalue="$(random_string VALID_NAME_CHAR \
+				    $attrlen)"
+				rm_xattr $attrname $file_name || \
+				    log_fail "Failed to remove $attrname"
+				set_xattr $attrname "$attrvalue" $file_name || \
+				    log_fail "Failed to set $attrname"
+			elif [ $value -eq 1 ]; then
+				dd if=/dev/urandom of=$file_name \
+				    bs=$file_size count=1 >/dev/null 2>&1 || \
+				    log_fail "Failed to overwrite $file_name"
+			elif [ $value -eq 2 ]; then
+				truncate -s $file_size $file_name || \
+				    log_fail "Failed to truncate $file_name"
+			elif [ $value -eq 3 ]; then
+				truncate -s 0 $file_name || \
+				    log_fail "Failed to truncate $file_name"
+			else
+				rm $file_name || \
+				    log_fail "Failed to remove $file_name"
+			fi
+		else
+			if [ $((RANDOM % 5)) -eq 0 ]; then
+				file_size=$((($RANDOM % 64) + 1))
+			fi
+
+			dd if=/dev/urandom of=$file_name \
+			    bs=$file_size count=1 >/dev/null 2>&1 || \
+			    log_fail "Failed to create $file_name"
+
+			if [ $xattrs -ne 0 ]; then
+				for j in {0..2}; do
+					attrname="testattr$j"
+					attrlen="$(((RANDOM % 1000) + 1))"
+					attrvalue="$(random_string \
+					    VALID_NAME_CHAR $attrlen)"
+					set_xattr $attrname \
+					    "$attrvalue" $file_name || \
+					    log_fail "Failed to set $attrname"
+				done
+			fi
+		fi
+	done
+
+	return 0
+}
+
+#
+# Mess up a send file's contents
+#
+# $1 The send file path
+#
+function mess_send_file
+{
+	typeset -i minsize=2072
 	file=$1
 
-	filesize=$(stat -c '%s' $file)
-	offset=$(($RANDOM * $RANDOM % $filesize))
+	filesize=$(stat_size $file)
+	if [ $filesize -lt $minsize ]; then
+		log_fail "Send file too small: $filesize < $minsize"
+	fi
+
+	# Truncate the send stream at a random offset after the DRR_BEGIN
+	# record (beyond 2072 bytes), any smaller than this and the receiving
+	# system won't have enough info to create the partial dataset at all.
+	# We use zstream dump to verify there is an intact DRR_BEGIN record.
+	offset=$(((($RANDOM * $RANDOM) % ($filesize - $minsize)) + $minsize))
+	nr_begins=$(head -c $offset $file | zstream dump | \
+	    awk '/DRR_BEGIN/ { print $5 }')
+	log_must [ "$nr_begins" -eq 1 ]
+
 	if (($RANDOM % 7 <= 1)); then
 		#
 		# We corrupt 2 bytes to minimize the chance that we
@@ -493,13 +586,11 @@ function file_check
 
 	if [[ -d /$recvfs/.zfs/snapshot/a && -d \
 	    /$sendfs/.zfs/snapshot/a ]]; then
-		diff -r /$recvfs/.zfs/snapshot/a /$sendfs/.zfs/snapshot/a
-		[[ $? -eq 0 ]] || log_fail "Differences found in snap a"
+		log_must directory_diff /$recvfs/.zfs/snapshot/a /$sendfs/.zfs/snapshot/a
 	fi
 	if [[ -d /$recvfs/.zfs/snapshot/b && -d \
 	    /$sendfs/.zfs/snapshot/b ]]; then
-		diff -r /$recvfs/.zfs/snapshot/b /$sendfs/.zfs/snapshot/b
-		[[ $? -eq 0 ]] || log_fail "Differences found in snap b"
+		log_must directory_diff /$recvfs/.zfs/snapshot/b /$sendfs/.zfs/snapshot/b
 	fi
 }
 
@@ -509,27 +600,44 @@ function file_check
 # $1 The ZFS send command
 # $2 The filesystem where the streams are sent
 # $3 The receive filesystem
+# $4 Test dry-run (optional)
 #
 function resume_test
 {
-	sendcmd=$1
-	streamfs=$2
-	recvfs=$3
+	typeset sendcmd=$1
+	typeset streamfs=$2
+	typeset recvfs=$3
+	typeset dryrun=${4:-1}
 
 	stream_num=1
 	log_must eval "$sendcmd >/$streamfs/$stream_num"
 
 	for ((i=0; i<2; i=i+1)); do
-		mess_file /$streamfs/$stream_num
-		log_mustnot zfs recv -suv $recvfs </$streamfs/$stream_num
+		mess_send_file /$streamfs/$stream_num
+		log_mustnot eval "zfs recv -suv $recvfs </$streamfs/$stream_num"
 		stream_num=$((stream_num+1))
 
-		token=$(zfs get -Hp -o value receive_resume_token $recvfs)
-		log_must eval "zfs send -v -t $token >/$streamfs/$stream_num"
-		[[ -f /$streamfs/$stream_num ]] || \
-		    log_fail "NO FILE /$streamfs/$stream_num"
+		token=$(get_prop receive_resume_token $recvfs)
+
+		# Do a dry-run
+		[ $dryrun -ne 0 ] && \
+			log_must eval "zfs send -nvt $token > /dev/null"
+
+		log_must eval "zfs send -t $token  >/$streamfs/$stream_num"
 	done
-	log_must zfs recv -suv $recvfs </$streamfs/$stream_num
+	log_must eval "zfs recv -suv $recvfs </$streamfs/$stream_num"
+}
+
+function get_resume_token
+{
+	sendcmd=$1
+	streamfs=$2
+	recvfs=$3
+
+	log_must eval "$sendcmd > /$streamfs/1"
+	mess_send_file /$streamfs/1
+	log_mustnot eval "zfs recv -suv $recvfs < /$streamfs/1 2>&1"
+	get_prop receive_resume_token $recvfs > /$streamfs/resume_token
 }
 
 #
@@ -550,7 +658,7 @@ function test_fs_setup
 	datasetexists $recvfs && log_must_busy zfs destroy -r $recvpool
 	datasetexists $streamfs && log_must_busy zfs destroy -r $streamfs
 
-	if $(datasetexists $sendfs || zfs create -o compress=lz4 $sendfs); then
+	if datasetexists $sendfs || zfs create -o compress=lz4 $sendfs; then
 		mk_files 1000 256 0 $sendfs &
 		mk_files 1000 131072 0 $sendfs &
 		mk_files 100 1048576 0 $sendfs &
@@ -593,7 +701,7 @@ function stream_has_features
 	shift
 
 	[[ -f $file ]] || log_fail "Couldn't find file: $file"
-	typeset flags=$(cat $file | zstreamdump | \
+	typeset flags=$(zstream dump $file | \
 	    awk '/features =/ {features = $3} END {print features}')
 	typeset -A feature
 	feature[dedup]="1"
@@ -606,6 +714,7 @@ function stream_has_features
 	feature[resuming]="100000"
 	feature[redacted]="200000"
 	feature[compressed]="400000"
+	feature[longname]="10000000"
 
 	typeset flag known derived=0
 	for flag in "$@"; do
@@ -620,34 +729,13 @@ function stream_has_features
 }
 
 #
-# Parse zstreamdump -v output.  The output varies for each kind of record:
-# BEGIN records are simply output as "BEGIN"
-# END records are output as "END"
-# OBJECT records become "OBJECT <object num>"
-# FREEOBJECTS records become "FREEOBJECTS <startobj> <numobjs>"
-# FREE records become "<record type> <start> <length>"
-# WRITE records become:
-# "<record type> <compression type> <start> <logical size> <compressed size>
-#  <data size>"
-#
-function parse_dump
-{
-	sed '/^WRITE/{N;s/\n/ /;}' | grep "^[A-Z]" | awk '{
-	    if ($1 == "BEGIN" || $1 == "END") print $1
-	    if ($1 == "OBJECT") print $1" "$4
-	    if ($1 == "FREEOBJECTS") print $1" "$4" "$7
-	    if ($1 == "FREE") print $1" "$7" "$10
-	    if ($1 == "WRITE") print $1" "$15" "$21" "$24" "$27" "$30}'
-}
-
-#
 # Given a send stream, verify that the size of the stream matches what's
 # expected based on the source or target dataset. If the stream is an
 # incremental stream, subtract the size of the source snapshot before
 # comparing. This function does not currently handle incremental streams
 # that remove data.
 #
-# $1 The zstreamdump output file
+# $1 The zstream dump output file
 # $2 The dataset to compare against
 #    This can be a source of a send or recv target (fs, not snapshot)
 # $3 The percentage below which verification is deemed a failure
@@ -664,8 +752,8 @@ function verify_stream_size
 	[[ -f $stream ]] || log_fail "No such file: $stream"
 	datasetexists $ds || log_fail "No such dataset: $ds"
 
-	typeset stream_size=$(cat $stream | zstreamdump | sed -n \
-	    's/	Total write size = \(.*\) (0x.*)/\1/p')
+	typeset stream_size=$(zstream dump $stream | sed -n \
+	    's/	Total payload size = \(.*\) (0x.*)/\1/p')
 
 	typeset inc_size=0
 	if [[ -n $inc_src ]]; then
@@ -682,8 +770,7 @@ function verify_stream_size
 	fi
 	ds_size=$((ds_size - inc_size))
 
-	within_percent $stream_size $ds_size $percent || log_fail \
-	    "$stream_size $ds_size differed by too much"
+	log_must within_percent $stream_size $ds_size $percent
 }
 
 # Cleanup function for tests involving resumable send
@@ -697,4 +784,34 @@ function resume_cleanup
 	datasetexists $streamfs && log_must_busy zfs destroy -r $streamfs
 	cleanup_pool $POOL2
 	rm -f /$sendpool/initial.zsend /$sendpool/incremental.zsend
+}
+
+# Randomly set the property to one of the enumerated values.
+function rand_set_prop
+{
+	typeset dtst=$1
+	typeset prop=$2
+	shift 2
+	typeset value=$(random_get $@)
+
+	log_must eval "zfs set $prop='$value' $dtst"
+}
+
+# Generate a recursive checksum of a filesystem which includes the file
+# contents and any associated extended attributes.
+function recursive_cksum
+{
+	case "$(uname)" in
+	FreeBSD)
+		find $1 -type f -exec sh -c 'xxh128sum {}; \
+		    lsextattr -q system {} | xxh128sum; \
+		    lsextattr -q user {} | xxh128sum' \; \
+		    | sort -k 2 | awk '{ print $1 }' | xxh128digest
+		;;
+	*)
+		find $1 -type f -exec sh -c 'xxh128sum {}; getfattr \
+		    --absolute-names --only-values -d {} | xxh128sum' \
+		    \; | sort -k 2 | awk '{ print $1 }' | xxh128digest
+		;;
+	esac
 }

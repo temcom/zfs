@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -6,7 +7,7 @@
 # You may not use this file except in compliance with the License.
 #
 # You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
+# or https://opensource.org/licenses/CDDL-1.0.
 # See the License for the specific language governing permissions
 # and limitations under the License.
 #
@@ -31,11 +32,20 @@
 . $STF_SUITE/include/libtest.shlib
 . $STF_SUITE/tests/functional/slog/slog.cfg
 
+function setup
+{
+	log_must rm -rf $VDIR $VDIR2
+	log_must mkdir -p $VDIR $VDIR2
+	log_must truncate -s $MINVDEVSIZE $VDEV $SDEV $LDEV $VDEV2 $SDEV2 $LDEV2
+
+	return 0
+}
+
 function cleanup
 {
 	poolexists $TESTPOOL && destroy_pool $TESTPOOL
 	poolexists $TESTPOOL2 && destroy_pool $TESTPOOL2
-	rm -rf $TESTDIR
+	rm -rf $TESTDIR $VDIR $VDIR2
 }
 
 #
@@ -92,7 +102,7 @@ function verify_slog_device
 	#
 	# mirror:/disks/d ONLINE mirror:/disks/e ONLINE stripe:/disks/f ONLINE
 	#
-	set -A dev_stat_tab $(zpool status -v $pool | nawk 'BEGIN {start=0} \
+	set -A dev_stat_tab $(zpool status -v $pool | awk 'BEGIN {start=0} \
 				/\tlogs/ {start=1}
 				/\tmirror/ || /\tspares/ || /^$/ {start=0}
 				(start==1) && /\t  (\/|[a-zA-Z])/ \

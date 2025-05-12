@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: CDDL-1.0
 /*
  * CDDL HEADER START
  *
@@ -6,7 +7,7 @@
  * You may not use this file except in compliance with the License.
  *
  * You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
- * or http://www.opensolaris.org/os/licensing.
+ * or https://opensource.org/licenses/CDDL-1.0.
  * See the License for the specific language governing permissions
  * and limitations under the License.
  *
@@ -27,9 +28,11 @@
 #if defined(__x86_64) && defined(HAVE_SSSE3)
 
 #include <sys/types.h>
-#include <linux/simd_x86.h>
+#include <sys/simd.h>
 
+#ifdef __linux__
 #define	__asm __asm__ __volatile__
+#endif
 
 #define	_REG_CNT(_0, _1, _2, _3, _4, _5, _6, _7, N, ...) N
 #define	REG_CNT(r...) _REG_CNT(r, 8, 7, 6, 5, 4, 3, 2, 1)
@@ -56,7 +59,7 @@
 #define	_R_23(_0, _1, REG2, REG3, ...) REG2, REG3
 #define	R_23(REG...) _R_23(REG, 1, 2, 3)
 
-#define	ASM_BUG()	ASSERT(0)
+#define	ZFS_ASM_BUG()	ASSERT(0)
 
 const uint8_t gf_clmul_mod_lt[4*256][16];
 
@@ -85,7 +88,7 @@ typedef struct v {
 		    : : [SRC] "r" (src));				\
 		break;							\
 	default:							\
-		ASM_BUG();						\
+		ZFS_ASM_BUG();						\
 	}								\
 }
 
@@ -105,7 +108,7 @@ typedef struct v {
 		    "pxor %" VR1(r) ", %" VR3(r));			\
 		break;							\
 	default:							\
-		ASM_BUG();						\
+		ZFS_ASM_BUG();						\
 	}								\
 }
 
@@ -127,7 +130,7 @@ typedef struct v {
 		    "movdqa %" VR1(r) ", %" VR3(r));			\
 		break;							\
 	default:							\
-		ASM_BUG();						\
+		ZFS_ASM_BUG();						\
 	}								\
 }
 
@@ -149,7 +152,7 @@ typedef struct v {
 		    : : [SRC] "r" (src));				\
 		break;							\
 	default:							\
-		ASM_BUG();						\
+		ZFS_ASM_BUG();						\
 	}								\
 }
 
@@ -171,7 +174,7 @@ typedef struct v {
 		    : : [DST] "r" (dst));				\
 		break;							\
 	default:							\
-		ASM_BUG();						\
+		ZFS_ASM_BUG();						\
 	}								\
 }
 
@@ -200,7 +203,7 @@ typedef struct v {
 		    "pxor    %xmm13,      %" VR1(r));			\
 		break;							\
 	default:							\
-		ASM_BUG();						\
+		ZFS_ASM_BUG();						\
 	}								\
 }
 
@@ -215,7 +218,7 @@ typedef struct v {
 		_MUL2_x2(r);						\
 		break;							\
 	default:							\
-		ASM_BUG();						\
+		ZFS_ASM_BUG();						\
 	}								\
 }
 
@@ -284,7 +287,7 @@ typedef struct v {
 		    [lt] "r" (gf_clmul_mod_lt[4*(c)]));			\
 		break;							\
 	default:							\
-		ASM_BUG();						\
+		ZFS_ASM_BUG();						\
 	}								\
 }
 
@@ -299,7 +302,7 @@ typedef struct v {
 		_MULx2(c, R_01(r));					\
 		break;							\
 	default:							\
-		ASM_BUG();						\
+		ZFS_ASM_BUG();						\
 	}								\
 }
 
@@ -399,8 +402,8 @@ DEFINE_REC_METHODS(ssse3);
 static boolean_t
 raidz_will_ssse3_work(void)
 {
-	return (zfs_sse_available() && zfs_sse2_available() &&
-	    zfs_ssse3_available());
+	return (kfpu_allowed() && zfs_sse_available() &&
+	    zfs_sse2_available() && zfs_ssse3_available());
 }
 
 const raidz_impl_ops_t vdev_raidz_ssse3_impl = {

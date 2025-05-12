@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -7,7 +8,7 @@
 # You may not use this file except in compliance with the License.
 #
 # You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
+# or https://opensource.org/licenses/CDDL-1.0.
 # See the License for the specific language governing permissions
 # and limitations under the License.
 #
@@ -48,22 +49,37 @@ set -A files writable immutable append
 function cleanup
 {
 	for i in ${files[*]}; do
-		log_must chattr -ia $TESTDIR/$i
-		log_must rm -f $TESTDIR/$i
+		if is_freebsd ; then
+			log_must chflags noschg $TESTDIR/$i
+			log_must rm -f $TESTDIR/$i
+		else
+			log_must chattr -ia $TESTDIR/$i
+			log_must rm -f $TESTDIR/$i
+		fi
 	done
 }
 
 log_onexit cleanup
 
-log_assert "Check whether chattr works as expected"
+if is_freebsd ; then
+	log_assert "Check whether chflags works as expected"
+else
+	log_assert "Check whether chattr works as expected"
+fi
 
 log_must touch $TESTDIR/writable
 log_must touch $TESTDIR/immutable
 log_must touch $TESTDIR/append
 
-log_must chattr -i $TESTDIR/writable
-log_must chattr +i $TESTDIR/immutable
-log_must chattr +a $TESTDIR/append
+if is_freebsd ; then
+	log_must chflags noschg $TESTDIR/writable
+	log_must chflags schg $TESTDIR/immutable
+	log_must chflags sappnd $TESTDIR/append
+else
+	log_must chattr -i $TESTDIR/writable
+	log_must chattr +i $TESTDIR/immutable
+	log_must chattr +a $TESTDIR/append
+fi
 
 log_must eval "echo test > $TESTDIR/writable"
 log_must eval "echo test >> $TESTDIR/writable"
@@ -72,4 +88,8 @@ log_mustnot eval "echo test >> $TESTDIR/immutable"
 log_mustnot eval "echo test > $TESTDIR/append"
 log_must eval "echo test >> $TESTDIR/append"
 
-log_pass "chattr works as expected"
+if is_freebsd ; then
+	log_pass "chflags works as expected"
+else
+	log_pass "chattr works as expected"
+fi

@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 
 #
 # This file and its contents are supplied under the terms of the
@@ -19,6 +20,10 @@
 . $STF_SUITE/tests/functional/cli_root/zpool_reopen/zpool_reopen.shlib
 
 verify_runnable "global"
+
+if ! is_linux; then
+	log_unsupported "scsi debug module unsupported"
+fi
 
 cleanup_devices $DISKS
 

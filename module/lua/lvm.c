@@ -1,4 +1,4 @@
-/* BEGIN CSTYLED */
+// SPDX-License-Identifier: MIT
 /*
 ** $Id: lvm.c,v 2.155.1.1 2013/04/12 18:48:47 roberto Exp $
 ** Lua virtual machine
@@ -569,7 +569,7 @@ void luaV_finishOp (lua_State *L) {
 #define donextjump(ci)	{ i = *ci->u.l.savedpc; dojump(ci, i, 1); }
 
 
-#define Protect(x)	{ {x;}; base = ci->u.l.base; }
+#define Protect(x)	{ {x;} base = ci->u.l.base; }
 
 #define checkGC(L,c)  \
   Protect( luaC_condGC(L,{L->top = (c);  /* limit of live values */ \
@@ -928,33 +928,3 @@ void luaV_execute (lua_State *L) {
     }
   }
 }
-
-/*
- * this can live in SPL
- */
-#if BITS_PER_LONG == 32
-#if defined(_KERNEL) && !defined(SPL_HAS_MODDI3)
-extern uint64_t __umoddi3(uint64_t dividend, uint64_t divisor);
-
-/* 64-bit signed modulo for 32-bit machines. */
-int64_t
-__moddi3(int64_t n, int64_t d)
-{
-	int64_t q;
-	boolean_t nn = B_FALSE;
-
-	if (n < 0) {
-		nn = B_TRUE;
-		n = -n;
-	}
-	if (d < 0)
-		d = -d;
-
-	q = __umoddi3(n, d);
-
-	return (nn ? -q : q);
-}
-EXPORT_SYMBOL(__moddi3);
-#endif
-#endif
-/* END CSTYLED */

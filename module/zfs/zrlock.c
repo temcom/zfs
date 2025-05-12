@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: CDDL-1.0
 /*
  * CDDL HEADER START
  *
@@ -6,7 +7,7 @@
  * You may not use this file except in compliance with the License.
  *
  * You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
- * or http://www.opensolaris.org/os/licensing.
+ * or https://opensource.org/licenses/CDDL-1.0.
  * See the License for the specific language governing permissions
  * and limitations under the License.
  *
@@ -39,7 +40,7 @@
  * function calls.
  */
 #include <sys/zrlock.h>
-#include <sys/trace_zrlock.h>
+#include <sys/trace_zfs.h>
 
 /*
  * A ZRL can be locked only while there are zero references, so ZRL_LOCKED is
@@ -106,16 +107,16 @@ zrl_add_impl(zrlock_t *zrl, const char *zc)
 void
 zrl_remove(zrlock_t *zrl)
 {
-	uint32_t n;
-
 #ifdef	ZFS_DEBUG
 	if (zrl->zr_owner == curthread) {
 		zrl->zr_owner = NULL;
 		zrl->zr_caller = NULL;
 	}
+	int32_t n = atomic_dec_32_nv((uint32_t *)&zrl->zr_refcount);
+	ASSERT3S(n, >=, 0);
+#else
+	atomic_dec_32((uint32_t *)&zrl->zr_refcount);
 #endif
-	n = atomic_dec_32_nv((uint32_t *)&zrl->zr_refcount);
-	ASSERT3S((int32_t)n, >=, 0);
 }
 
 int
@@ -154,15 +155,6 @@ zrl_exit(zrlock_t *zrl)
 	zrl->zr_refcount = 0;
 	cv_broadcast(&zrl->zr_cv);
 	mutex_exit(&zrl->zr_mtx);
-}
-
-int
-zrl_refcount(zrlock_t *zrl)
-{
-	ASSERT3S(zrl->zr_refcount, >, ZRL_DESTROYED);
-
-	int n = (int)zrl->zr_refcount;
-	return (n <= 0 ? 0 : n);
 }
 
 int

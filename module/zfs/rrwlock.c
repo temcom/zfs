@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: CDDL-1.0
 /*
  * CDDL HEADER START
  *
@@ -6,7 +7,7 @@
  * You may not use this file except in compliance with the License.
  *
  * You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
- * or http://www.opensolaris.org/os/licensing.
+ * or https://opensource.org/licenses/CDDL-1.0.
  * See the License for the specific language governing permissions
  * and limitations under the License.
  *
@@ -26,8 +27,8 @@
  * Copyright (c) 2012 by Delphix. All rights reserved.
  */
 
-#include <sys/refcount.h>
 #include <sys/rrwlock.h>
+#include <sys/trace_zfs.h>
 
 /*
  * This file contains the implementation of a re-entrant read
@@ -77,7 +78,7 @@ uint_t rrw_tsd_key;
 typedef struct rrw_node {
 	struct rrw_node *rn_next;
 	rrwlock_t *rn_rrl;
-	void *rn_tag;
+	const void *rn_tag;
 } rrw_node_t;
 
 static rrw_node_t *
@@ -99,7 +100,7 @@ rrn_find(rrwlock_t *rrl)
  * Add a node to the head of the singly linked list.
  */
 static void
-rrn_add(rrwlock_t *rrl, void *tag)
+rrn_add(rrwlock_t *rrl, const void *tag)
 {
 	rrw_node_t *rn;
 
@@ -115,7 +116,7 @@ rrn_add(rrwlock_t *rrl, void *tag)
  * thread's list and return TRUE; otherwise return FALSE.
  */
 static boolean_t
-rrn_find_and_remove(rrwlock_t *rrl, void *tag)
+rrn_find_and_remove(rrwlock_t *rrl, const void *tag)
 {
 	rrw_node_t *rn;
 	rrw_node_t *prev = NULL;
@@ -160,10 +161,10 @@ rrw_destroy(rrwlock_t *rrl)
 }
 
 static void
-rrw_enter_read_impl(rrwlock_t *rrl, boolean_t prio, void *tag)
+rrw_enter_read_impl(rrwlock_t *rrl, boolean_t prio, const void *tag)
 {
 	mutex_enter(&rrl->rr_lock);
-#if !defined(DEBUG) && defined(_KERNEL)
+#if !defined(ZFS_DEBUG) && defined(_KERNEL)
 	if (rrl->rr_writer == NULL && !rrl->rr_writer_wanted &&
 	    !rrl->rr_track_all) {
 		rrl->rr_anon_rcount.rc_count++;
@@ -192,7 +193,7 @@ rrw_enter_read_impl(rrwlock_t *rrl, boolean_t prio, void *tag)
 }
 
 void
-rrw_enter_read(rrwlock_t *rrl, void *tag)
+rrw_enter_read(rrwlock_t *rrl, const void *tag)
 {
 	rrw_enter_read_impl(rrl, B_FALSE, tag);
 }
@@ -204,7 +205,7 @@ rrw_enter_read(rrwlock_t *rrl, void *tag)
  * the pending writer does not work, so we have to give an explicit hint here.
  */
 void
-rrw_enter_read_prio(rrwlock_t *rrl, void *tag)
+rrw_enter_read_prio(rrwlock_t *rrl, const void *tag)
 {
 	rrw_enter_read_impl(rrl, B_TRUE, tag);
 }
@@ -228,7 +229,7 @@ rrw_enter_write(rrwlock_t *rrl)
 }
 
 void
-rrw_enter(rrwlock_t *rrl, krw_t rw, void *tag)
+rrw_enter(rrwlock_t *rrl, krw_t rw, const void *tag)
 {
 	if (rw == RW_READER)
 		rrw_enter_read(rrl, tag);
@@ -237,10 +238,10 @@ rrw_enter(rrwlock_t *rrl, krw_t rw, void *tag)
 }
 
 void
-rrw_exit(rrwlock_t *rrl, void *tag)
+rrw_exit(rrwlock_t *rrl, const void *tag)
 {
 	mutex_enter(&rrl->rr_lock);
-#if !defined(DEBUG) && defined(_KERNEL)
+#if !defined(ZFS_DEBUG) && defined(_KERNEL)
 	if (!rrl->rr_writer && rrl->rr_linked_rcount.rc_count == 0) {
 		rrl->rr_anon_rcount.rc_count--;
 		if (rrl->rr_anon_rcount.rc_count == 0)
@@ -339,7 +340,7 @@ rrm_destroy(rrmlock_t *rrl)
 }
 
 void
-rrm_enter(rrmlock_t *rrl, krw_t rw, void *tag)
+rrm_enter(rrmlock_t *rrl, krw_t rw, const void *tag)
 {
 	if (rw == RW_READER)
 		rrm_enter_read(rrl, tag);
@@ -358,7 +359,7 @@ rrm_enter(rrmlock_t *rrl, krw_t rw, void *tag)
 #define	RRM_TD_LOCK()	(((uint32_t)(uintptr_t)(curthread)) % RRM_NUM_LOCKS)
 
 void
-rrm_enter_read(rrmlock_t *rrl, void *tag)
+rrm_enter_read(rrmlock_t *rrl, const void *tag)
 {
 	rrw_enter_read(&rrl->locks[RRM_TD_LOCK()], tag);
 }
@@ -373,7 +374,7 @@ rrm_enter_write(rrmlock_t *rrl)
 }
 
 void
-rrm_exit(rrmlock_t *rrl, void *tag)
+rrm_exit(rrmlock_t *rrl, const void *tag)
 {
 	int i;
 

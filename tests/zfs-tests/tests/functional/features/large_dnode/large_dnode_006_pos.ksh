@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -7,7 +8,7 @@
 # You may not use this file except in compliance with the License.
 #
 # You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
+# or https://opensource.org/licenses/CDDL-1.0.
 # See the License for the specific language governing permissions
 # and limitations under the License.
 #
@@ -18,6 +19,11 @@
 # information: Portions Copyright [yyyy] [name of copyright owner]
 #
 # CDDL HEADER END
+#
+
+#
+# Copyright (c) 2016 by Lawrence Livermore National Security, LLC.
+# Use is subject to license terms.
 #
 
 #
@@ -44,7 +50,7 @@ verify_runnable "both"
 
 function cleanup
 {
-	datasetexists $TEST_FS && log_must zfs destroy $TEST_FS
+	datasetexists $TEST_FS && destroy_dataset $TEST_FS
 }
 
 log_onexit cleanup

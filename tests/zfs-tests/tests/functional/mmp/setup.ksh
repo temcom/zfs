@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -27,6 +28,8 @@ if [ -e $HOSTID_FILE ]; then
 	log_unsupported "System has existing $HOSTID_FILE file"
 fi
 
-log_must set_tunable64 zfs_multihost_history $MMP_HISTORY
+log_must set_tunable64 MULTIHOST_HISTORY $MMP_HISTORY
+log_must set_tunable64 MULTIHOST_INTERVAL $MMP_INTERVAL_DEFAULT
+log_must set_tunable64 MULTIHOST_FAIL_INTERVALS $MMP_FAIL_INTERVALS_DEFAULT
 
 log_pass "mmp setup pass"

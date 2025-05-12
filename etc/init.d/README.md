@@ -7,16 +7,12 @@ DESCRIPTION
 
   They have been tested successfully on:
 
-    * Debian GNU/Linux Wheezy
-    * Debian GNU/Linux Jessie
-    * Ubuntu Trusty
-    * CentOS 6.0
-    * CentOS 6.6
+    * Debian GNU/Linux Bookworm
     * Gentoo
 
 SUPPORT
   If you find that they don't work for your platform, please report this
-  at the ZFS On Linux issue tracker at https://github.com/zfsonlinux/zfs/issues.
+  at the OpenZFS issue tracker at https://github.com/openzfs/zfs/issues.
 
   Please include:
 
@@ -35,21 +31,23 @@ SUPPORT
 
   If you're making your own distribution and you want the scripts to
   work on that, the biggest problem you'll (probably) have is the part
-  at the beginning of the "zfs-functions.in" file which sets up the
+  at the beginning of the "zfs-functions" file which sets up the
   logging output.
 
 INSTALLING INIT SCRIPT LINKS
   To setup the init script links in /etc/rc?.d manually on a Debian GNU/Linux
   (or derived) system, run the following commands (the order is important!):
 
-    update-rc.d zfs-import start 07 S .       stop 07 0 1 6 .
-    update-rc.d zfs-mount  start 02 2 3 4 5 . stop 06 0 1 6 .
-    update-rc.d zfs-zed    start 07 2 3 4 5 . stop 08 0 1 6 .
-    update-rc.d zfs-share  start 27 2 3 4 5 . stop 05 0 1 6 .
+    update-rc.d zfs-import   start 07 S .       stop 07 0 1 6 .
+    update-rc.d zfs-load-key start 02 2 3 4 5 . stop 06 0 1 6 .
+    update-rc.d zfs-mount    start 02 S       . stop 06 0 1 6 .
+    update-rc.d zfs-zed      start 07 2 3 4 5 . stop 08 0 1 6 .
+    update-rc.d zfs-share    start 27 2 3 4 5 . stop 05 0 1 6 .
 
   To do the same on RedHat, Fedora and/or CentOS:
 
     chkconfig zfs-import
+    chkconfig zfs-load-key
     chkconfig zfs-mount
     chkconfig zfs-zed
     chkconfig zfs-share
@@ -57,6 +55,7 @@ INSTALLING INIT SCRIPT LINKS
   On Gentoo:
 
     rc-update add zfs-import boot
+    rc-update add zfs-load-key boot
     rc-update add zfs-mount boot
     rc-update add zfs-zed default
     rc-update add zfs-share default

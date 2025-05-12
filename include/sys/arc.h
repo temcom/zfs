@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: CDDL-1.0
 /*
  * CDDL HEADER START
  *
@@ -6,7 +7,7 @@
  * You may not use this file except in compliance with the License.
  *
  * You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
- * or http://www.opensolaris.org/os/licensing.
+ * or https://opensource.org/licenses/CDDL-1.0.
  * See the License for the specific language governing permissions
  * and limitations under the License.
  *
@@ -22,6 +23,8 @@
  * Copyright (c) 2005, 2010, Oracle and/or its affiliates. All rights reserved.
  * Copyright (c) 2012, 2016 by Delphix. All rights reserved.
  * Copyright (c) 2013 by Saso Kiselkov. All rights reserved.
+ * Copyright (c) 2019, Allan Jude
+ * Copyright (c) 2019, Klara Inc.
  */
 
 #ifndef	_SYS_ARC_H
@@ -36,26 +39,40 @@ extern "C" {
 #include <sys/zio.h>
 #include <sys/dmu.h>
 #include <sys/spa.h>
-#include <sys/refcount.h>
+#include <sys/zfs_refcount.h>
 
 /*
  * Used by arc_flush() to inform arc_evict_state() that it should evict
  * all available buffers from the arc state being passed in.
  */
-#define	ARC_EVICT_ALL	-1ULL
+#define	ARC_EVICT_ALL	UINT64_MAX
+
+/*
+ * ZFS gets very unhappy when the maximum ARC size is smaller than the maximum
+ * block size and a larger block is written.  To leave some safety margin, we
+ * limit the minimum for zfs_arc_max to the maximium transaction size.
+ */
+#define	MIN_ARC_MAX	DMU_MAX_ACCESS
 
 #define	HDR_SET_LSIZE(hdr, x) do { \
 	ASSERT(IS_P2ALIGNED(x, 1U << SPA_MINBLOCKSHIFT)); \
 	(hdr)->b_lsize = ((x) >> SPA_MINBLOCKSHIFT); \
-_NOTE(CONSTCOND) } while (0)
+} while (0)
 
 #define	HDR_SET_PSIZE(hdr, x) do { \
 	ASSERT(IS_P2ALIGNED((x), 1U << SPA_MINBLOCKSHIFT)); \
 	(hdr)->b_psize = ((x) >> SPA_MINBLOCKSHIFT); \
-_NOTE(CONSTCOND) } while (0)
+} while (0)
+
+/* The l2size in the header is only used by L2 cache */
+#define	HDR_SET_L2SIZE(hdr, x) do { \
+	ASSERT(IS_P2ALIGNED((x), 1U << SPA_MINBLOCKSHIFT)); \
+	(hdr)->b_l2size = ((x) >> SPA_MINBLOCKSHIFT); \
+} while (0)
 
 #define	HDR_GET_LSIZE(hdr)	((hdr)->b_lsize << SPA_MINBLOCKSHIFT)
 #define	HDR_GET_PSIZE(hdr)	((hdr)->b_psize << SPA_MINBLOCKSHIFT)
+#define	HDR_GET_L2SIZE(hdr)	((hdr)->b_l2size << SPA_MINBLOCKSHIFT)
 
 typedef struct arc_buf_hdr arc_buf_hdr_t;
 typedef struct arc_buf arc_buf_t;
@@ -70,12 +87,13 @@ typedef struct arc_prune arc_prune_t;
  * parameter will be NULL.
  */
 typedef void arc_read_done_func_t(zio_t *zio, const zbookmark_phys_t *zb,
-    const blkptr_t *bp, arc_buf_t *buf, void *private);
-typedef void arc_write_done_func_t(zio_t *zio, arc_buf_t *buf, void *private);
-typedef void arc_prune_func_t(int64_t bytes, void *private);
+    const blkptr_t *bp, arc_buf_t *buf, void *priv);
+typedef void arc_write_done_func_t(zio_t *zio, arc_buf_t *buf, void *priv);
+typedef void arc_prune_func_t(uint64_t bytes, void *priv);
 
 /* Shared module parameters */
-extern int zfs_arc_average_blocksize;
+extern uint_t zfs_arc_average_blocksize;
+extern int l2arc_exclude_special;
 
 /* generic arc_done_func_t's which you can use */
 arc_read_done_func_t arc_bcopy_func;
@@ -105,12 +123,12 @@ typedef enum arc_flags
 	ARC_FLAG_PREFETCH		= 1 << 2,	/* I/O is a prefetch */
 	ARC_FLAG_CACHED			= 1 << 3,	/* I/O was in cache */
 	ARC_FLAG_L2CACHE		= 1 << 4,	/* cache in L2ARC */
-	ARC_FLAG_PREDICTIVE_PREFETCH	= 1 << 5,	/* I/O from zfetch */
+	ARC_FLAG_UNCACHED		= 1 << 5,	/* evict after use */
 	ARC_FLAG_PRESCIENT_PREFETCH	= 1 << 6,	/* long min lifespan */
 
 	/*
 	 * Private ARC flags.  These flags are private ARC only flags that
-	 * will show up in b_flags in the arc_hdr_buf_t. These flags should
+	 * will show up in b_flags in the arc_buf_hdr_t. These flags should
 	 * only be set by ARC code.
 	 */
 	ARC_FLAG_IN_HASH_TABLE		= 1 << 7,	/* buffer is hashed */
@@ -147,6 +165,17 @@ typedef enum arc_flags
 	ARC_FLAG_SHARED_DATA		= 1 << 21,
 
 	/*
+	 * Fail this arc_read() (with ENOENT) if the data is not already present
+	 * in cache.
+	 */
+	ARC_FLAG_CACHED_ONLY		= 1 << 22,
+
+	/*
+	 * Don't instantiate an arc_buf_t for arc_read_done.
+	 */
+	ARC_FLAG_NO_BUF			= 1 << 23,
+
+	/*
 	 * The arc buffer's compression mode is stored in the top 7 bits of the
 	 * flags field, so these dummy flags are included so that MDB can
 	 * interpret the enum properly.
@@ -158,7 +187,6 @@ typedef enum arc_flags
 	ARC_FLAG_COMPRESS_4		= 1 << 28,
 	ARC_FLAG_COMPRESS_5		= 1 << 29,
 	ARC_FLAG_COMPRESS_6		= 1 << 30
-
 } arc_flags_t;
 
 typedef enum arc_buf_flags {
@@ -174,20 +202,18 @@ typedef enum arc_buf_flags {
 struct arc_buf {
 	arc_buf_hdr_t		*b_hdr;
 	arc_buf_t		*b_next;
-	kmutex_t		b_evict_lock;
 	void			*b_data;
 	arc_buf_flags_t		b_flags;
 };
 
 typedef enum arc_buf_contents {
-	ARC_BUFC_INVALID,			/* invalid type */
 	ARC_BUFC_DATA,				/* buffer contains data */
 	ARC_BUFC_METADATA,			/* buffer contains metadata */
 	ARC_BUFC_NUMTYPES
 } arc_buf_contents_t;
 
 /*
- * The following breakdows of arc_size exist for kstat only.
+ * The following breakdowns of arc_size exist for kstat only.
  */
 typedef enum arc_space_type {
 	ARC_SPACE_DATA,
@@ -197,6 +223,7 @@ typedef enum arc_space_type {
 	ARC_SPACE_DBUF,
 	ARC_SPACE_DNODE,
 	ARC_SPACE_BONUS,
+	ARC_SPACE_ABD_CHUNK_WASTE,
 	ARC_SPACE_NUMTYPES
 } arc_space_type_t;
 
@@ -207,6 +234,7 @@ typedef enum arc_state_type {
 	ARC_STATE_MFU,
 	ARC_STATE_MFU_GHOST,
 	ARC_STATE_L2C_ONLY,
+	ARC_STATE_UNCACHED,
 	ARC_STATE_NUMTYPES
 } arc_state_type_t;
 
@@ -229,6 +257,16 @@ typedef struct arc_buf_info {
 	enum zio_compress	abi_l2arc_compress;
 } arc_buf_info_t;
 
+/*
+ * Flags returned by arc_cached; describes which part of the arc
+ * the block is cached in.
+ */
+#define	ARC_CACHED_EMBEDDED	(1U << 0)
+#define	ARC_CACHED_IN_L1	(1U << 1)
+#define	ARC_CACHED_IN_MRU	(1U << 2)
+#define	ARC_CACHED_IN_MFU	(1U << 3)
+#define	ARC_CACHED_IN_L2	(1U << 4)
+
 void arc_space_consume(uint64_t space, arc_space_type_t type);
 void arc_space_return(uint64_t space, arc_space_type_t type);
 boolean_t arc_is_metadata(arc_buf_t *buf);
@@ -242,56 +280,65 @@ int arc_untransform(arc_buf_t *buf, spa_t *spa, const zbookmark_phys_t *zb,
 void arc_convert_to_raw(arc_buf_t *buf, uint64_t dsobj, boolean_t byteorder,
     dmu_object_type_t ot, const uint8_t *salt, const uint8_t *iv,
     const uint8_t *mac);
-arc_buf_t *arc_alloc_buf(spa_t *spa, void *tag, arc_buf_contents_t type,
+arc_buf_t *arc_alloc_buf(spa_t *spa, const void *tag, arc_buf_contents_t type,
     int32_t size);
-arc_buf_t *arc_alloc_compressed_buf(spa_t *spa, void *tag,
-    uint64_t psize, uint64_t lsize, enum zio_compress compression_type);
-arc_buf_t *arc_alloc_raw_buf(spa_t *spa, void *tag, uint64_t dsobj,
+arc_buf_t *arc_alloc_compressed_buf(spa_t *spa, const void *tag,
+    uint64_t psize, uint64_t lsize, enum zio_compress compression_type,
+    uint8_t complevel);
+arc_buf_t *arc_alloc_raw_buf(spa_t *spa, const void *tag, uint64_t dsobj,
     boolean_t byteorder, const uint8_t *salt, const uint8_t *iv,
     const uint8_t *mac, dmu_object_type_t ot, uint64_t psize, uint64_t lsize,
-    enum zio_compress compression_type);
+    enum zio_compress compression_type, uint8_t complevel);
+uint8_t arc_get_complevel(arc_buf_t *buf);
 arc_buf_t *arc_loan_buf(spa_t *spa, boolean_t is_metadata, int size);
 arc_buf_t *arc_loan_compressed_buf(spa_t *spa, uint64_t psize, uint64_t lsize,
-    enum zio_compress compression_type);
+    enum zio_compress compression_type, uint8_t complevel);
 arc_buf_t *arc_loan_raw_buf(spa_t *spa, uint64_t dsobj, boolean_t byteorder,
     const uint8_t *salt, const uint8_t *iv, const uint8_t *mac,
     dmu_object_type_t ot, uint64_t psize, uint64_t lsize,
-    enum zio_compress compression_type);
-void arc_return_buf(arc_buf_t *buf, void *tag);
-void arc_loan_inuse_buf(arc_buf_t *buf, void *tag);
-void arc_buf_destroy(arc_buf_t *buf, void *tag);
+    enum zio_compress compression_type, uint8_t complevel);
+void arc_return_buf(arc_buf_t *buf, const void *tag);
+void arc_loan_inuse_buf(arc_buf_t *buf, const void *tag);
+void arc_buf_destroy(arc_buf_t *buf, const void *tag);
 void arc_buf_info(arc_buf_t *buf, arc_buf_info_t *abi, int state_index);
 uint64_t arc_buf_size(arc_buf_t *buf);
 uint64_t arc_buf_lsize(arc_buf_t *buf);
 void arc_buf_access(arc_buf_t *buf);
-void arc_release(arc_buf_t *buf, void *tag);
+void arc_release(arc_buf_t *buf, const void *tag);
 int arc_released(arc_buf_t *buf);
 void arc_buf_sigsegv(int sig, siginfo_t *si, void *unused);
 void arc_buf_freeze(arc_buf_t *buf);
 void arc_buf_thaw(arc_buf_t *buf);
 #ifdef ZFS_DEBUG
 int arc_referenced(arc_buf_t *buf);
+#else
+#define	arc_referenced(buf) ((void) sizeof (buf), 0)
 #endif
 
 int arc_read(zio_t *pio, spa_t *spa, const blkptr_t *bp,
-    arc_read_done_func_t *done, void *private, zio_priority_t priority,
+    arc_read_done_func_t *done, void *priv, zio_priority_t priority,
     int flags, arc_flags_t *arc_flags, const zbookmark_phys_t *zb);
-zio_t *arc_write(zio_t *pio, spa_t *spa, uint64_t txg,
-    blkptr_t *bp, arc_buf_t *buf, boolean_t l2arc, const zio_prop_t *zp,
+zio_t *arc_write(zio_t *pio, spa_t *spa, uint64_t txg, blkptr_t *bp,
+    arc_buf_t *buf, boolean_t uncached, boolean_t l2arc, const zio_prop_t *zp,
     arc_write_done_func_t *ready, arc_write_done_func_t *child_ready,
-    arc_write_done_func_t *physdone, arc_write_done_func_t *done,
-    void *private, zio_priority_t priority, int zio_flags,
-    const zbookmark_phys_t *zb);
+    arc_write_done_func_t *done, void *priv, zio_priority_t priority,
+    int zio_flags, const zbookmark_phys_t *zb);
 
-arc_prune_t *arc_add_prune_callback(arc_prune_func_t *func, void *private);
+arc_prune_t *arc_add_prune_callback(arc_prune_func_t *func, void *priv);
 void arc_remove_prune_callback(arc_prune_t *p);
 void arc_freed(spa_t *spa, const blkptr_t *bp);
+int arc_cached(spa_t *spa, const blkptr_t *bp);
 
 void arc_flush(spa_t *spa, boolean_t retry);
+void arc_flush_async(spa_t *spa);
 void arc_tempreserve_clear(uint64_t reserve);
 int arc_tempreserve_space(spa_t *spa, uint64_t reserve, uint64_t txg);
+boolean_t arc_async_flush_guid_inuse(uint64_t load_guid);
 
+uint64_t arc_all_memory(void);
+uint64_t arc_default_max(uint64_t min, uint64_t allmem);
 uint64_t arc_target_bytes(void);
+void arc_set_limits(uint64_t);
 void arc_init(void);
 void arc_fini(void);
 
@@ -302,10 +349,15 @@ void arc_fini(void);
 void l2arc_add_vdev(spa_t *spa, vdev_t *vd);
 void l2arc_remove_vdev(vdev_t *vd);
 boolean_t l2arc_vdev_present(vdev_t *vd);
+void l2arc_rebuild_vdev(vdev_t *vd, boolean_t reopen);
+boolean_t l2arc_range_check_overlap(uint64_t bottom, uint64_t top,
+    uint64_t check);
 void l2arc_init(void);
 void l2arc_fini(void);
 void l2arc_start(void);
 void l2arc_stop(void);
+void l2arc_spa_rebuild_start(spa_t *spa);
+void l2arc_spa_rebuild_stop(spa_t *spa);
 
 #ifndef _KERNEL
 extern boolean_t arc_watch;

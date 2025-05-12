@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # This file and its contents are supplied under the terms of the
 # Common Development and Distribution License ("CDDL"), version 1.0.
@@ -52,7 +53,7 @@ function verify_object_class # <path> <symbol>
 	symbol="$2"
 
 	log_must eval "zfs diff -F $TESTSNAP1 $TESTSNAP2 > $FILEDIFF"
-	diffsym="$(awk -v path="$path" '$NF == path { print $2 }' < $FILEDIFF)"
+	diffsym="$(awk -v path="$path" '$NF == path { print $2 }' $FILEDIFF)"
 	if [[ "$diffsym" != "$symbol" ]]; then
 		log_fail "Unexpected type for $path ('$diffsym' != '$symbol')"
 	else
@@ -70,8 +71,13 @@ DATASET="$TESTPOOL/$TESTFS/fs"
 TESTSNAP1="$DATASET@snap1"
 TESTSNAP2="$DATASET@snap2"
 FILEDIFF="$TESTDIR/zfs-diff.txt"
-MAJOR=$(stat -c %t /dev/null)
-MINOR=$(stat -c %T /dev/null)
+if is_freebsd; then
+	MAJOR=$(stat -f %Hr /dev/null)
+	MINOR=$(stat -f %Lr /dev/null)
+else
+	MAJOR=$(stat -c %t /dev/null)
+	MINOR=$(stat -c %T /dev/null)
+fi
 
 # 1. Prepare a dataset
 log_must zfs create $DATASET
@@ -106,7 +112,7 @@ verify_object_class "$MNTPOINT/cdev" "C"
 
 # 2. | (Named pipe)
 log_must zfs snapshot "$TESTSNAP1"
-log_must mknod "$MNTPOINT/fifo" p
+log_must mkfifo "$MNTPOINT/fifo"
 log_must zfs snapshot "$TESTSNAP2"
 verify_object_class "$MNTPOINT/fifo" "|"
 
@@ -118,7 +124,7 @@ verify_object_class "$MNTPOINT/dir" "/"
 
 # 2. = (Socket)
 log_must zfs snapshot "$TESTSNAP1"
-log_must $STF_SUITE/tests/functional/cli_root/zfs_diff/socket "$MNTPOINT/sock"
+log_must zfs_diff-socket "$MNTPOINT/sock"
 log_must zfs snapshot "$TESTSNAP2"
 verify_object_class "$MNTPOINT/sock" "="
 

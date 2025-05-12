@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: CDDL-1.0
 /*
  * CDDL HEADER START
  *
@@ -6,7 +7,7 @@
  * You may not use this file except in compliance with the License.
  *
  * You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
- * or http://www.opensolaris.org/os/licensing.
+ * or https://opensource.org/licenses/CDDL-1.0.
  * See the License for the specific language governing permissions
  * and limitations under the License.
  *
@@ -23,6 +24,8 @@
  * Copyright 2008 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
  */
+
+#ifndef HAVE_STRLCPY
 
 #include <string.h>
 #include <sys/types.h>
@@ -50,3 +53,5 @@ strlcpy(char *dst, const char *src, size_t len)
 	dst[copied] = '\0';
 	return (slen);
 }
+
+#endif /* HAVE_STRLCPY */

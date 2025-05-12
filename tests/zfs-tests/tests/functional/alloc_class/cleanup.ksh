@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 
 #
 # This file and its contents are supplied under the terms of the
@@ -21,7 +22,7 @@
 
 verify_runnable "global"
 
-pool_cleanup
+default_cleanup_noexit
 disk_cleanup
 
 log_pass

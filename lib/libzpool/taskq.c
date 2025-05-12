@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: CDDL-1.0
 /*
  * CDDL HEADER START
  *
@@ -6,7 +7,7 @@
  * You may not use this file except in compliance with the License.
  *
  * You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
- * or http://www.opensolaris.org/os/licensing.
+ * or https://opensource.org/licenses/CDDL-1.0.
  * See the License for the specific language governing permissions
  * and limitations under the License.
  *
@@ -33,6 +34,8 @@
 int taskq_now;
 taskq_t *system_taskq;
 taskq_t *system_delay_taskq;
+
+static pthread_key_t taskq_tsd;
 
 #define	TASKQ_ACTIVE	0x00010000
 
@@ -132,9 +135,10 @@ taskq_dispatch(taskq_t *tq, task_func_t func, void *arg, uint_t tqflags)
 }
 
 taskqid_t
-taskq_dispatch_delay(taskq_t *tq,  task_func_t func, void *arg, uint_t tqflags,
+taskq_dispatch_delay(taskq_t *tq, task_func_t func, void *arg, uint_t tqflags,
     clock_t expire_time)
 {
+	(void) tq, (void) func, (void) arg, (void) tqflags, (void) expire_time;
 	return (0);
 }
 
@@ -197,21 +201,25 @@ taskq_wait(taskq_t *tq)
 void
 taskq_wait_id(taskq_t *tq, taskqid_t id)
 {
+	(void) id;
 	taskq_wait(tq);
 }
 
 void
 taskq_wait_outstanding(taskq_t *tq, taskqid_t id)
 {
+	(void) id;
 	taskq_wait(tq);
 }
 
-static void
+static __attribute__((noreturn)) void
 taskq_thread(void *arg)
 {
 	taskq_t *tq = arg;
 	taskq_ent_t *t;
 	boolean_t prealloc;
+
+	VERIFY0(pthread_setspecific(taskq_tsd, tq));
 
 	mutex_enter(&tq->tq_lock);
 	while (tq->tq_flags & TASKQ_ACTIVE) {
@@ -243,11 +251,11 @@ taskq_thread(void *arg)
 	thread_exit();
 }
 
-/*ARGSUSED*/
 taskq_t *
 taskq_create(const char *name, int nthreads, pri_t pri,
     int minalloc, int maxalloc, uint_t flags)
 {
+	(void) pri;
 	taskq_t *tq = kmem_zalloc(sizeof (taskq_t), KM_SLEEP);
 	int t;
 
@@ -269,7 +277,7 @@ taskq_create(const char *name, int nthreads, pri_t pri,
 	cv_init(&tq->tq_dispatch_cv, NULL, CV_DEFAULT, NULL);
 	cv_init(&tq->tq_wait_cv, NULL, CV_DEFAULT, NULL);
 	cv_init(&tq->tq_maxalloc_cv, NULL, CV_DEFAULT, NULL);
-	(void) strncpy(tq->tq_name, name, TASKQ_NAMELEN);
+	(void) strlcpy(tq->tq_name, name, sizeof (tq->tq_name));
 	tq->tq_flags = flags | TASKQ_ACTIVE;
 	tq->tq_active = nthreads;
 	tq->tq_nthreads = nthreads;
@@ -288,8 +296,8 @@ taskq_create(const char *name, int nthreads, pri_t pri,
 	}
 
 	for (t = 0; t < nthreads; t++)
-		VERIFY((tq->tq_threadlist[t] = thread_create(NULL, 0,
-		    taskq_thread, tq, 0, &p0, TS_RUN, pri)) != NULL);
+		VERIFY((tq->tq_threadlist[t] = thread_create_named(tq->tq_name,
+		    NULL, 0, taskq_thread, tq, 0, &p0, TS_RUN, pri)) != NULL);
 
 	return (tq);
 }
@@ -312,7 +320,9 @@ taskq_destroy(taskq_t *tq)
 	tq->tq_minalloc = 0;
 	while (tq->tq_nalloc != 0) {
 		ASSERT(tq->tq_freelist != NULL);
-		task_free(tq, task_alloc(tq, KM_SLEEP));
+		taskq_ent_t *tqent_nexttq = tq->tq_freelist->tqent_next;
+		task_free(tq, tq->tq_freelist);
+		tq->tq_freelist = tqent_nexttq;
 	}
 
 	mutex_exit(&tq->tq_lock);
@@ -326,6 +336,36 @@ taskq_destroy(taskq_t *tq)
 	cv_destroy(&tq->tq_maxalloc_cv);
 
 	kmem_free(tq, sizeof (taskq_t));
+}
+
+/*
+ * Create a taskq with a specified number of pool threads. Allocate
+ * and return an array of nthreads kthread_t pointers, one for each
+ * thread in the pool. The array is not ordered and must be freed
+ * by the caller.
+ */
+taskq_t *
+taskq_create_synced(const char *name, int nthreads, pri_t pri,
+    int minalloc, int maxalloc, uint_t flags, kthread_t ***ktpp)
+{
+	taskq_t *tq;
+	kthread_t **kthreads = kmem_zalloc(sizeof (*kthreads) * nthreads,
+	    KM_SLEEP);
+
+	(void) pri; (void) minalloc; (void) maxalloc;
+
+	flags &= ~(TASKQ_DYNAMIC | TASKQ_THREADS_CPU_PCT | TASKQ_DC_BATCH);
+
+	tq = taskq_create(name, nthreads, minclsyspri, nthreads, INT_MAX,
+	    flags | TASKQ_PREPOPULATE);
+	VERIFY(tq != NULL);
+	VERIFY(tq->tq_nthreads == nthreads);
+
+	for (int i = 0; i < nthreads; i++) {
+		kthreads[i] = tq->tq_threadlist[i];
+	}
+	*ktpp = kthreads;
+	return (tq);
 }
 
 int
@@ -343,15 +383,23 @@ taskq_member(taskq_t *tq, kthread_t *t)
 	return (0);
 }
 
+taskq_t *
+taskq_of_curthread(void)
+{
+	return (pthread_getspecific(taskq_tsd));
+}
+
 int
 taskq_cancel_id(taskq_t *tq, taskqid_t id)
 {
+	(void) tq, (void) id;
 	return (ENOENT);
 }
 
 void
 system_taskq_init(void)
 {
+	VERIFY0(pthread_key_create(&taskq_tsd, NULL));
 	system_taskq = taskq_create("system_taskq", 64, maxclsyspri, 4, 512,
 	    TASKQ_DYNAMIC | TASKQ_PREPOPULATE);
 	system_delay_taskq = taskq_create("delay_taskq", 4, maxclsyspri, 4,
@@ -365,4 +413,5 @@ system_taskq_fini(void)
 	system_taskq = NULL; /* defensive */
 	taskq_destroy(system_delay_taskq);
 	system_delay_taskq = NULL;
+	VERIFY0(pthread_key_delete(taskq_tsd));
 }

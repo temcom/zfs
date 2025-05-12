@@ -1,28 +1,28 @@
-include $(top_srcdir)/config/Rules.am
+libuutil_la_CFLAGS = $(AM_CFLAGS) $(LIBRARY_CFLAGS) $(LIBRARY_CFLAGS)
 
-DEFAULT_INCLUDES += \
-	-I$(top_srcdir)/include \
-	-I$(top_srcdir)/lib/libspl/include
+lib_LTLIBRARIES += libuutil.la
+CPPCHECKTARGETS += libuutil.la
 
-lib_LTLIBRARIES = libuutil.la
-
-USER_C = \
-	uu_alloc.c \
-	uu_avl.c \
-	uu_dprintf.c \
-	uu_ident.c \
-	uu_list.c \
-	uu_misc.c \
-	uu_open.c \
-	uu_pname.c \
-	uu_string.c
-
-nodist_libuutil_la_SOURCES = $(USER_C)
+libuutil_la_SOURCES = \
+	%D%/uu_alloc.c \
+	%D%/uu_avl.c \
+	%D%/uu_ident.c \
+	%D%/uu_list.c \
+	%D%/uu_misc.c \
+	%D%/uu_string.c
 
 libuutil_la_LIBADD = \
-	$(top_builddir)/lib/libavl/libavl.la \
-	$(top_builddir)/lib/libspl/libspl.la
+	libavl.la \
+	libspl.la
 
-libuutil_la_LDFLAGS = -pthread -version-info 1:1:0
+libuutil_la_LIBADD += $(LTLIBINTL)
 
-EXTRA_DIST = $(USER_C)
+libuutil_la_LDFLAGS = -pthread
+
+if !ASAN_ENABLED
+libuutil_la_LDFLAGS += -Wl,-z,defs
+endif
+
+libuutil_la_LDFLAGS += -version-info 3:0:0
+
+dist_noinst_DATA += %D%/libuutil.abi %D%/libuutil.suppr

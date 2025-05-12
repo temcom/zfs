@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: CDDL-1.0
 /*
  * CDDL HEADER START
  *
@@ -6,7 +7,7 @@
  * You may not use this file except in compliance with the License.
  *
  * You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
- * or http://www.opensolaris.org/os/licensing.
+ * or https://opensource.org/licenses/CDDL-1.0.
  * See the License for the specific language governing permissions
  * and limitations under the License.
  *
@@ -21,9 +22,10 @@
 
 /*
  * Copyright (c) 2005, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright (c) 2012, 2018 by Delphix. All rights reserved.
+ * Copyright (c) 2012, 2020 by Delphix. All rights reserved.
  * Copyright 2011 Nexenta Systems, Inc. All rights reserved.
  * Copyright (c) 2013, Joyent, Inc. All rights reserved.
+ * Copyright (c) 2019 Datto Inc.
  */
 
 #ifndef _DMU_RECV_H
@@ -33,8 +35,9 @@
 #include <sys/dsl_bookmark.h>
 #include <sys/dsl_dataset.h>
 #include <sys/spa.h>
+#include <sys/objlist.h>
 
-extern const char *recv_clone_name;
+extern const char *const recv_clone_name;
 
 typedef struct dmu_recv_cookie {
 	struct dsl_dataset *drc_ds;
@@ -44,25 +47,43 @@ typedef struct dmu_recv_cookie {
 	const char *drc_tosnap;
 	boolean_t drc_newfs;
 	boolean_t drc_byteswap;
+	uint64_t drc_featureflags;
 	boolean_t drc_force;
+	boolean_t drc_heal;
 	boolean_t drc_resumable;
+	boolean_t drc_should_save;
 	boolean_t drc_raw;
 	boolean_t drc_clone;
-	struct avl_tree *drc_guid_to_ds_map;
+	boolean_t drc_spill;
 	nvlist_t *drc_keynvl;
-	zio_cksum_t drc_cksum;
-	uint64_t drc_newsnapobj;
+	uint64_t drc_fromsnapobj;
+	uint64_t drc_ivset_guid;
 	void *drc_owner;
 	cred_t *drc_cred;
+	nvlist_t *drc_begin_nvl;
+
+	objset_t *drc_os;
+	zfs_file_t *drc_fp; /* The file to read the stream from */
+	uint64_t drc_voff; /* The current offset in the stream */
+	uint64_t drc_bytes_read;
+	/*
+	 * A record that has had its payload read in, but hasn't yet been handed
+	 * off to the worker thread.
+	 */
+	struct receive_record_arg *drc_rrd;
+	/* A record that has had its header read in, but not its payload. */
+	struct receive_record_arg *drc_next_rrd;
+	zio_cksum_t drc_cksum;
+	zio_cksum_t drc_prev_cksum;
+	/* Sorted list of objects not to issue prefetches for. */
+	objlist_t *drc_ignore_objlist;
 } dmu_recv_cookie_t;
 
-int dmu_recv_begin(char *tofs, char *tosnap,
-    struct dmu_replay_record *drr_begin, boolean_t force, boolean_t resumable,
-    nvlist_t *localprops, nvlist_t *hidden_args, char *origin,
-    dmu_recv_cookie_t *drc);
-int dmu_recv_stream(dmu_recv_cookie_t *drc, struct vnode *vp, offset_t *voffp,
-    int cleanup_fd, uint64_t *action_handlep);
-int dmu_recv_end(dmu_recv_cookie_t *drc, void *owner);
-boolean_t dmu_objset_is_receiving(objset_t *os);
+int dmu_recv_begin(const char *, const char *, dmu_replay_record_t *,
+    boolean_t, boolean_t, boolean_t, nvlist_t *, nvlist_t *, const char *,
+    dmu_recv_cookie_t *, zfs_file_t *, offset_t *);
+int dmu_recv_stream(dmu_recv_cookie_t *, offset_t *);
+int dmu_recv_end(dmu_recv_cookie_t *, void *);
+boolean_t dmu_objset_is_receiving(objset_t *);
 
 #endif /* _DMU_RECV_H */

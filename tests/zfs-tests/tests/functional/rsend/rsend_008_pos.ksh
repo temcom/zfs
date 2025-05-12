@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -7,7 +8,7 @@
 # You may not use this file except in compliance with the License.
 #
 # You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
+# or https://opensource.org/licenses/CDDL-1.0.
 # See the License for the specific language governing permissions
 # and limitations under the License.
 #
@@ -38,12 +39,12 @@
 # STRATEGY:
 #	1. Separately promote pool clone, filesystem clone and volume clone.
 #	2. Recursively backup all the POOL and restore in POOL2
-#	3. Verify all the datesets and property be properly received.
+#	3. Verify all the datasets and properties were properly received.
 #
 
 verify_runnable "both"
 
-# See issue: https://github.com/zfsonlinux/zfs/issues/6066
+# See issue: https://github.com/openzfs/zfs/issues/6066
 log_unsupported "Occasionally hangs"
 
 #		Origin			Clone

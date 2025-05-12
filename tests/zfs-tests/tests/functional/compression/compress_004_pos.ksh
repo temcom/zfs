@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -7,7 +8,7 @@
 # You may not use this file except in compliance with the License.
 #
 # You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
+# or https://opensource.org/licenses/CDDL-1.0.
 # See the License for the specific language governing permissions
 # and limitations under the License.
 #
@@ -21,14 +22,13 @@
 #
 
 #
-# Copyright 2007 Sun Microsystems, Inc.  All rights reserved.
+# Copyright (c) 2007, Sun Microsystems Inc. All rights reserved.
+# Copyright (c) 2013, 2016, Delphix. All rights reserved.
+# Copyright (c) 2019, Kjeld Schouten-Lebbing. All Rights Reserved.
 # Use is subject to license terms.
 #
 
-#
-# Copyright (c) 2013, 2016 by Delphix. All rights reserved.
-#
-
+. $STF_SUITE/include/properties.shlib
 . $STF_SUITE/include/libtest.shlib
 
 #
@@ -94,7 +94,7 @@ typeset -i blknum=0
 
 for propname in "compression" "compress"
 do
-	for value in $(get_compress_opts zfs_compress)
+	for value in "${compress_prop_vals[@]:1}"
 	do
 		log_must zfs set compression=$value $fs
 		real_val=$(get_prop $propname $fs)

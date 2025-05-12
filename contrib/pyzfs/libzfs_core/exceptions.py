@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 #
 # Copyright 2015 ClusterHQ
 #
@@ -17,14 +18,21 @@
 """
 Exceptions that can be raised by libzfs_core operations.
 """
+from __future__ import absolute_import, division, print_function
 
 import errno
 from ._constants import (
+    ECHRNG,
+    ECKSUM,
+    ETIME,
     ZFS_ERR_CHECKPOINT_EXISTS,
     ZFS_ERR_DISCARDING_CHECKPOINT,
     ZFS_ERR_NO_CHECKPOINT,
     ZFS_ERR_DEVRM_IN_PROGRESS,
-    ZFS_ERR_VDEV_TOO_BIG
+    ZFS_ERR_VDEV_TOO_BIG,
+    ZFS_ERR_WRONG_PARENT,
+    ZFS_ERR_RAIDZ_EXPAND_IN_PROGRESS,
+    zfs_errno
 )
 
 
@@ -75,7 +83,7 @@ class MultipleOperationsFailure(ZFSError):
             ZFSError.__str__(self), len(self.errors), self.suppressed_count)
 
     def __repr__(self):
-        return "%s(%r, %r, errors=%r, supressed=%r)" % (
+        return "%s(%r, %r, errors=%r, suppressed=%r)" % (
             self.__class__.__name__, self.errno, self.message, self.errors,
             self.suppressed_count)
 
@@ -139,7 +147,7 @@ class ParentNotFound(ZFSError):
 
 
 class WrongParent(ZFSError):
-    errno = errno.EINVAL
+    errno = ZFS_ERR_WRONG_PARENT
     message = "Parent dataset is not a filesystem"
 
     def __init__(self, name):
@@ -225,7 +233,15 @@ class BookmarkNotFound(ZFSError):
 
 class BookmarkMismatch(ZFSError):
     errno = errno.EINVAL
-    message = "Bookmark is not in snapshot's filesystem"
+    message = "source is not an ancestor of the new bookmark's dataset"
+
+    def __init__(self, name):
+        self.name = name
+
+
+class BookmarkSourceInvalid(ZFSError):
+    errno = errno.EINVAL
+    message = "Bookmark source is not a valid snapshot or existing bookmark"
 
     def __init__(self, name):
         self.name = name
@@ -314,7 +330,7 @@ class DestinationModified(ZFSError):
 
 
 class BadStream(ZFSError):
-    errno = errno.EBADE
+    errno = ECKSUM
     message = "Bad backup stream"
 
 
@@ -336,6 +352,11 @@ class StreamFeatureInvalid(ZFSError):
 class StreamFeatureIncompatible(ZFSError):
     errno = errno.EINVAL
     message = "Incompatible embedded feature with encrypted receive"
+
+
+class StreamTruncated(ZFSError):
+    errno = zfs_errno.ZFS_ERR_STREAM_TRUNCATED
+    message = "incomplete stream"
 
 
 class ReceivePropertyFailure(MultipleOperationsFailure):
@@ -370,7 +391,7 @@ class NoSpace(ZFSError):
 
 class QuotaExceeded(ZFSError):
     errno = errno.EDQUOT
-    message = "Quouta exceeded"
+    message = "Quota exceeded"
 
     def __init__(self, name):
         self.name = name
@@ -522,7 +543,7 @@ class ZCPSyntaxError(ZCPError):
 
 
 class ZCPRuntimeError(ZCPError):
-    errno = errno.ECHRNG
+    errno = ECHRNG
     message = "Channel programs encountered a runtime error"
 
     def __init__(self, details):
@@ -535,7 +556,7 @@ class ZCPLimitInvalid(ZCPError):
 
 
 class ZCPTimeout(ZCPError):
-    errno = errno.ETIME
+    errno = ETIME
     message = "Channel program timed out"
 
 
@@ -577,6 +598,11 @@ class DeviceRemovalRunning(ZFSError):
 class DeviceTooBig(ZFSError):
     errno = ZFS_ERR_VDEV_TOO_BIG
     message = "One or more top-level vdevs exceed the maximum vdev size"
+
+
+class RaidzExpansionRunning(ZFSError):
+    errno = ZFS_ERR_RAIDZ_EXPAND_IN_PROGRESS
+    message = "A raidz device is currently expanding"
 
 
 # vim: softtabstop=4 tabstop=4 expandtab shiftwidth=4

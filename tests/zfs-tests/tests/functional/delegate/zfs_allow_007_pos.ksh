@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -7,7 +8,7 @@
 # You may not use this file except in compliance with the License.
 #
 # You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
+# or https://opensource.org/licenses/CDDL-1.0.
 # See the License for the specific language governing permissions
 # and limitations under the License.
 #
@@ -66,7 +67,7 @@ log_must zfs create $childfs
 log_must zfs create $grandchild
 
 #
-# Setting different permissions to the same set on two level.
+# Setting different permissions to the same set on two levels.
 # But only assign the user at one level.
 #
 log_must zfs allow -s @set $perms1 $ROOT_TESTFS
@@ -74,7 +75,8 @@ log_must zfs allow -s @set $perms2 $childfs
 log_must zfs allow $STAFF1 @set $childfs
 
 #
-# Verify only perms2 is valid to user on the level which he was assigned.
+# Verify that the user only has the permissions that they were assigned
+# in each filesystem.
 #
 log_must verify_noperm $ROOT_TESTFS $perms1 $STAFF1
 for fs in $childfs $grandchild ; do

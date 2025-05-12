@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -7,7 +8,7 @@
 # You may not use this file except in compliance with the License.
 #
 # You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
+# or https://opensource.org/licenses/CDDL-1.0.
 # See the License for the specific language governing permissions
 # and limitations under the License.
 #
@@ -48,8 +49,7 @@ function cleanup
 	typeset snap f
 
 	for snap in $snap1 $snap2 $snap3; do
-		snapexists $snap && \
-			log_must zfs destroy -f $snap
+		snapexists $snap && destroy_dataset $snap -f
 	done
 
 	for f in $tmpfile1 $tmpfile2; do
@@ -65,7 +65,7 @@ snap2=$fs@snap2
 snap3=$fs@snap3
 
 set -A badargs \
-	"" "$TESTPOOL" "$TESTFS" "$fs" "$fs@nonexisten_snap" "?" \
+	"" "$TESTPOOL" "$TESTFS" "$fs" "$fs@nonexistent_snap" "?" \
 	"$snap1/blah" "$snap1@blah" "-i" "-x" "-i $fs" \
 	"-x $snap1 $snap2" "-i $snap1" \
 	"-i $snap2 $snap1" "$snap1 $snap2" "-i $snap1 $snap2 $snap3" \
@@ -96,7 +96,7 @@ log_must zfs snapshot $snap3
 typeset -i i=0
 while (( i < ${#badargs[*]} ))
 do
-	log_mustnot eval "zfs send ${badargs[i]} >/dev/null"
+	log_mustnot eval "zfs send ${badargs[i]} > /dev/null"
 
 	(( i = i + 1 ))
 done

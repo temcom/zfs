@@ -1,4 +1,5 @@
 #! /bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -7,7 +8,7 @@
 # You may not use this file except in compliance with the License.
 #
 # You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
+# or https://opensource.org/licenses/CDDL-1.0.
 # See the License for the specific language governing permissions
 # and limitations under the License.
 #
@@ -48,10 +49,6 @@
 
 verify_runnable "both"
 
-if is_linux; then
-	log_unsupported "Test case is known to fail on Linux"
-fi
-
 function cleanup
 {
 	typeset snap=""
@@ -61,18 +58,16 @@ function cleanup
 	log_must zfs mount -a
 	unset __ZFS_POOL_RESTRICT
 
-	for snap in "$SNAPPOOL.1" "$SNAPPOOL"
-	do
-		snapexists $snap
-		[[ $? -eq 0 ]] && \
-			log_must zfs destroy $snap
+	for snap in "$SNAPPOOL.1" "$SNAPPOOL"; do
+		if snapexists $snap; then
+			destroy_snapshot $snap
+		fi
 	done
 
-	for fs in "$TESTPOOL/$TESTFILE/$TESTFILE.1" "$TESTPOOL/$TESTFILE"
-	do
-		datasetexists $fs
-		[[ $? -eq 0 ]] && \
-			log_must zfs destroy -r $fs
+	for fs in "$TESTPOOL/$TESTFILE/$TESTFILE.1" "$TESTPOOL/$TESTFILE"; do
+		if datasetexists $fs; then
+			destroy_dataset $fs -r
+		fi
 	done
 
 	[[ -e /$TESTPOOL ]] && \
@@ -88,6 +83,7 @@ log_must zfs rollback $SNAPPOOL
 log_mustnot zfs snapshot $SNAPPOOL
 
 log_must touch /$TESTPOOL/$TESTFILE
+sync_pool $TESTPOOL
 
 log_must zfs rollback $SNAPPOOL
 log_must zfs create $TESTPOOL/$TESTFILE
@@ -98,6 +94,15 @@ log_note "Verify rollback of multiple nested file systems succeeds."
 log_must zfs snapshot $TESTPOOL/$TESTFILE@$TESTSNAP
 log_must zfs snapshot $SNAPPOOL.1
 
+#
+# Linux: Issuing a `df` seems to properly force any negative dcache entries to
+# be invalidated preventing failures when accessing the mount point. Additional
+# investigation required.
+#
+# https://github.com/openzfs/zfs/issues/6143
+#
+log_must eval "df >/dev/null"
+
 export __ZFS_POOL_RESTRICT="$TESTPOOL"
 log_must zfs unmount -a
 log_must zfs mount -a
@@ -106,5 +111,6 @@ unset __ZFS_POOL_RESTRICT
 log_must touch /$TESTPOOL/$TESTFILE/$TESTFILE.1
 
 log_must zfs rollback $SNAPPOOL.1
+log_must eval "df >/dev/null"
 
 log_pass "Rollbacks succeed when nested file systems are present."

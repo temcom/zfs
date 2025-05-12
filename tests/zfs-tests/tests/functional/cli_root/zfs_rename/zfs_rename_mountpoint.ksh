@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -34,8 +35,8 @@ verify_runnable "both"
 
 function rename_cleanup
 {
-	log_note zfs destroy -fR $TESTPOOL/rename_test
-	log_note zfs destroy -fR $TESTPOOL/renamed
+	zfs destroy -fR $TESTPOOL/rename_test
+	zfs destroy -fR $TESTPOOL/renamed
 }
 
 log_onexit rename_cleanup

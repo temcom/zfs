@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: CDDL-1.0
 /*
  * CDDL HEADER START
  *
@@ -6,7 +7,7 @@
  * You may not use this file except in compliance with the License.
  *
  * You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
- * or http://www.opensolaris.org/os/licensing.
+ * or https://opensource.org/licenses/CDDL-1.0.
  * See the License for the specific language governing permissions
  * and limitations under the License.
  *
@@ -24,16 +25,18 @@
 
 #if defined(__x86_64) && defined(HAVE_AES)
 
-#include <linux/simd_x86.h>
+#include <sys/simd.h>
+#include <sys/types.h>
+#include <sys/asm_linkage.h>
 
 /* These functions are used to execute AES-NI instructions: */
-extern int rijndael_key_setup_enc_intel(uint32_t rk[],
+extern ASMABI int rijndael_key_setup_enc_intel(uint32_t rk[],
 	const uint32_t cipherKey[], uint64_t keyBits);
-extern int rijndael_key_setup_dec_intel(uint32_t rk[],
+extern ASMABI int rijndael_key_setup_dec_intel(uint32_t rk[],
 	const uint32_t cipherKey[], uint64_t keyBits);
-extern void aes_encrypt_intel(const uint32_t rk[], int Nr,
+extern ASMABI void aes_encrypt_intel(const uint32_t rk[], int Nr,
 	const uint32_t pt[4], uint32_t ct[4]);
-extern void aes_decrypt_intel(const uint32_t rk[], int Nr,
+extern ASMABI void aes_decrypt_intel(const uint32_t rk[], int Nr,
 	const uint32_t ct[4], uint32_t pt[4]);
 
 
@@ -108,7 +111,7 @@ aes_aesni_decrypt(const uint32_t rk[], int Nr, const uint32_t ct[4],
 static boolean_t
 aes_aesni_will_work(void)
 {
-	return (zfs_aes_available());
+	return (kfpu_allowed() && zfs_aes_available());
 }
 
 const aes_impl_ops_t aes_aesni_impl = {

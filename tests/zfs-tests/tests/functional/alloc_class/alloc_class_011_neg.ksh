@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 
 #
 # This file and its contents are supplied under the terms of the
@@ -21,6 +22,7 @@
 #
 # DESCRIPTION:
 #	Setting the special_small_blocks property to invalid values fails.
+#	Powers of two from 512 to 1M are allowed.
 #
 
 verify_runnable "global"
@@ -34,7 +36,7 @@ log_must disk_setup
 log_must zpool create $TESTPOOL raidz $ZPOOL_DISKS special mirror \
 	$CLASS_DISK0 $CLASS_DISK1
 
-for value in 256 1025 262144
+for value in 256 1025 33554432
 do
 	log_mustnot zfs set special_small_blocks=$value $TESTPOOL
 done

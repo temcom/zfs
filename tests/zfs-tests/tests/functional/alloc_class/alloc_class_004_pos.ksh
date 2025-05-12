@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 
 #
 # This file and its contents are supplied under the terms of the
@@ -52,8 +53,7 @@ do
 	log_must zpool create $TESTPOOL $type $ZPOOL_DISKS \
 	    special $stype $sdisks
 
-	ac_value="$(zpool get all -H -o property,value | \
-	    egrep allocation_classes | nawk '{print $2}')"
+	ac_value="$(zpool get -H -o property,value all | awk '/allocation_classes/ {print $2}')"
 	if [ "$ac_value" = "active" ]; then
 		log_note "feature@allocation_classes is active"
 	else

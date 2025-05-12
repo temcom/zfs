@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: CDDL-1.0
 /*
  * CDDL HEADER START
  *
@@ -71,8 +72,9 @@ struct multilist {
 	multilist_sublist_index_func_t	*ml_index_func;
 };
 
+void multilist_create(multilist_t *, size_t, size_t,
+    multilist_sublist_index_func_t *);
 void multilist_destroy(multilist_t *);
-multilist_t *multilist_create(size_t, size_t, multilist_sublist_index_func_t *);
 
 void multilist_insert(multilist_t *, void *);
 void multilist_remove(multilist_t *, void *);
@@ -81,14 +83,19 @@ int  multilist_is_empty(multilist_t *);
 unsigned int multilist_get_num_sublists(multilist_t *);
 unsigned int multilist_get_random_index(multilist_t *);
 
-multilist_sublist_t *multilist_sublist_lock(multilist_t *, unsigned int);
+void multilist_sublist_lock(multilist_sublist_t *);
+multilist_sublist_t *multilist_sublist_lock_idx(multilist_t *, unsigned int);
 multilist_sublist_t *multilist_sublist_lock_obj(multilist_t *, void *);
 void multilist_sublist_unlock(multilist_sublist_t *);
 
 void multilist_sublist_insert_head(multilist_sublist_t *, void *);
 void multilist_sublist_insert_tail(multilist_sublist_t *, void *);
+void multilist_sublist_insert_after(multilist_sublist_t *, void *, void *);
+void multilist_sublist_insert_before(multilist_sublist_t *, void *, void *);
 void multilist_sublist_move_forward(multilist_sublist_t *mls, void *obj);
 void multilist_sublist_remove(multilist_sublist_t *, void *);
+int  multilist_sublist_is_empty(multilist_sublist_t *);
+int  multilist_sublist_is_empty_idx(multilist_t *, unsigned int);
 
 void *multilist_sublist_head(multilist_sublist_t *);
 void *multilist_sublist_tail(multilist_sublist_t *);

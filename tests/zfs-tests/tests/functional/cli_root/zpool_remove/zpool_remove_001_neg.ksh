@@ -1,4 +1,5 @@
 #!/bin/ksh -p
+# SPDX-License-Identifier: CDDL-1.0
 #
 # CDDL HEADER START
 #
@@ -7,7 +8,7 @@
 # You may not use this file except in compliance with the License.
 #
 # You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
+# or https://opensource.org/licenses/CDDL-1.0.
 # See the License for the specific language governing permissions
 # and limitations under the License.
 #
@@ -42,14 +43,13 @@
 # 3. Verify that the remove failed.
 #
 
-typeset disk=${DISK}
-typeset vdev_devs="${disk}${SLICE_PREFIX}${SLICE0}"
-typeset mirror_devs="${disk}${SLICE_PREFIX}${SLICE0} ${disk}${SLICE_PREFIX}${SLICE1}"
+typeset vdev_devs="${DISK0}"
+typeset mirror_devs="${DISK0} ${DISK1}"
 typeset raidz_devs=${mirror_devs}
 typeset raidz1_devs=${mirror_devs}
-typeset raidz2_devs="${mirror_devs} ${disk}${SLICE_PREFIX}${SLICE3}"
-typeset spare_devs1="${disk}${SLICE_PREFIX}${SLICE0}"
-typeset spare_devs2="${disk}${SLICE_PREFIX}${SLICE1}"
+typeset raidz2_devs="${mirror_devs} ${DISK2}"
+typeset spare_devs1="${DISK0}"
+typeset spare_devs2="${DISK1}"
 
 function check_remove
 {
